@@ -1,25 +1,17 @@
-import { NICHE_PRESETS } from './presets/niches';
 import { searchJina, RawScrapedPost } from './core/jina';
-import { searchFirecrawl } from './core/firecrawl';
-import { batchEvaluateContent, sleep } from './core/gemini';
+import { generateDorksFromNiche, batchEvaluateContent, sleep } from './core/gemini';
 import { exportToClientSheet } from './core/sheet';
-import { TaskDefinition } from './core/types';
+import { ActiveClientFromAdmin } from './core/types';
 
-interface ActiveClient {
-  name: string;
-  spreadsheetId: string;
-  nicheKey: string;
-  timeFilter: 'qdr:h' | 'qdr:d' | 'qdr:w' | 'qdr:m';
-}
-
-async function fetchActiveClientsFromAdminSheet(webhookUrl: string): Promise<ActiveClient[]> {
+// 1. Lấy danh sách khách hàng đang BẬT từ Google Sheet Admin
+async function fetchActiveClientsFromAdmin(webhookUrl: string): Promise<ActiveClientFromAdmin[]> {
   try {
-    console.log('📡 Đang đồng bộ danh sách khách hàng từ Google Sheet Admin Dashboard...');
+    console.log('📡 Đang đồng bộ danh sách khách hàng từ Admin Dashboard...');
     const res = await fetch(webhookUrl, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) return [];
-    return (await res.json()) as ActiveClient[];
+    return (await res.json()) as ActiveClientFromAdmin[];
   } catch (err: any) {
-    console.error('❌ Không thể đọc dữ liệu từ Admin Sheet:', err.message);
+    console.error('❌ Lỗi kết nối Sheet Admin:', err.message);
     return [];
   }
 }
@@ -27,7 +19,6 @@ async function fetchActiveClientsFromAdminSheet(webhookUrl: string): Promise<Act
 async function main() {
   const keys = {
     jina: process.env.JINA_API_KEY || '',
-    firecrawl: process.env.FIRECRAWL_API_KEY || '',
     gemini: process.env.GEMINI_API_KEY || '',
     sheetUrl: process.env.SHEET_WEBHOOK_URL || ''
   };
@@ -37,72 +28,54 @@ async function main() {
     process.exit(1);
   }
 
-  // 1. Lấy danh sách toàn bộ khách hàng đang BẬT trên Google Sheet Admin
-  const activeClients = await fetchActiveClientsFromAdminSheet(keys.sheetUrl);
+  const activeClients = await fetchActiveClientsFromAdmin(keys.sheetUrl);
 
   if (activeClients.length === 0) {
-    console.log('✨ Hiện tại không có khách hàng nào ở trạng thái "BẬT" trên Admin Sheet.');
+    console.log('✨ Không có khách hàng nào đang ở trạng thái Hoạt động trên Admin Sheet.');
     return;
   }
 
-  console.log(`🚀 Tìm thấy ${activeClients.length} khách hàng đang kích hoạt. Bắt đầu quét dữ liệu...`);
+  console.log(`🚀 Tìm thấy ${activeClients.length} khách hàng đang hoạt động. Bắt đầu quét...`);
 
-  // 2. Chạy quét dữ liệu cho từng khách hàng
-  for (const client of activeClients) {
-    const preset = NICHE_PRESETS[client.nicheKey] || NICHE_PRESETS['freelance_video'];
+  // Chạy lần lượt từng khách hàng (mỗi khách mất ~4-5s)
+  for (let i = 0; i < activeClients.length; i++) {
+    const client = activeClients[i];
 
-    console.log(`\n------------------------------------------------------`);
-    console.log(`👤 KHÁCH HÀNG: [${client.name}] | NGÀNH: [${preset.name}]`);
+    console.log(`\n======================================================`);
+    console.log(`[${i + 1}/${activeClients.length}] KHÁCH HÀNG: [${client.name}] | GÓI: [${client.sku}]`);
+    console.log(`🎯 ĐỊNH NGHĨA NGÁCH (Cột H): "${client.nicheDefinition}"`);
     console.log(`📍 SPREADSHEET ID: [${client.spreadsheetId}]`);
-    console.log(`------------------------------------------------------`);
+    console.log(`======================================================`);
 
+    // Bước 1: AI tự động sinh Dorking theo định nghĩa ngách
+    const dynamicDorks = await generateDorksFromNiche(client.nicheDefinition, keys.gemini);
+    console.log(`🤖 AI sinh ${dynamicDorks.length} câu Dorking:`, dynamicDorks);
+
+    // Bước 2: Cào Jina theo mốc cào (qdr:d hoặc qdr:w)
     const rawPosts: RawScrapedPost[] = [];
-
-    // Cào các câu dork theo ngành
-    for (const dork of preset.dorks) {
-      console.log(`🔍 Quét Jina: ${dork}`);
+    for (const dork of dynamicDorks) {
       const jinaRes = await searchJina(dork, keys.jina, client.timeFilter);
       rawPosts.push(...jinaRes);
-
-      if (keys.firecrawl && jinaRes.length === 0) {
-        const fcRes = await searchFirecrawl(dork, keys.firecrawl, client.timeFilter);
-        rawPosts.push(...fcRes);
-      }
-      await sleep(500);
+      await sleep(300);
     }
 
     const uniquePosts = Array.from(new Map(rawPosts.map(p => [p.url, p])).values());
     console.log(`📌 Gom được ${uniquePosts.length} bài viết thô.`);
 
+    // Bước 3: Đưa toàn bộ vào Gemini thẩm định 1 lượt (Single Batch)
     if (uniquePosts.length > 0) {
-      // Giả lập TaskDefinition từ NichePreset
-      const taskDef: TaskDefinition = {
-        id: client.nicheKey,
-        name: preset.name,
-        enabled: true,
-        spreadsheetId: client.spreadsheetId,
-        timeFilter: client.timeFilter,
-        dorks: preset.dorks,
-        aiPrompt: {
-          systemRole: preset.systemRole,
-          validationRules: preset.validationRules,
-          categoryTags: preset.categoryTags,
-          extraField1Label: preset.extraField1Label,
-          extraField2Label: preset.extraField2Label
-        }
-      };
+      const approvedLeads = await batchEvaluateContent(uniquePosts, client, keys.gemini);
+      console.log(`🎯 AI duyệt được ${approvedLeads.length}/${uniquePosts.length} lead đạt chuẩn.`);
 
-      // Đưa qua Gemini xử lý Batch
-      const approvedLeads = await batchEvaluateContent(uniquePosts, taskDef, keys.gemini);
-      console.log(`🎯 AI đã duyệt ${approvedLeads.length}/${uniquePosts.length} lead chất lượng cao.`);
-
-      // Ghi thẳng vào Google Sheet riêng của khách đó
+      // Bước 4: Bơm thẳng vào Sheet riêng của khách
       if (approvedLeads.length > 0) {
         await exportToClientSheet(client.spreadsheetId, approvedLeads, keys.sheetUrl);
       }
     }
 
-    await sleep(2000); // Nghỉ 2s trước khi chuyển sang khách tiếp theo
+    if (i < activeClients.length - 1) {
+      await sleep(1500); // Nghỉ 1.5s giữa các khách hàng
+    }
   }
 
   console.log('\n🎉 HOÀN THÀNH TOÀN BỘ PHIÊN QUÉT CHO TẤT CẢ KHÁCH HÀNG!');
