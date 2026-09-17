@@ -2,6 +2,7 @@ name: Universal Lead Agent Runner
 
 on:
   schedule:
+    # Quét mỗi 15 phút vào các phút lẻ tránh nghẽn hàng đợi
     - cron: '3,18,33,48 * * * *'
   workflow_dispatch:
 
