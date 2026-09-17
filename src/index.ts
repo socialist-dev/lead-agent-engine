@@ -1,4 +1,5 @@
 import { searchJina, RawScrapedPost } from './core/jina';
+import { searchFirecrawl } from './core/firecrawl';
 import { generateDorksFromNiche, batchEvaluateContent, sleep } from './core/gemini';
 import { exportToClientSheet } from './core/sheet';
 import { ActiveClientFromAdmin } from './core/types';
@@ -19,12 +20,13 @@ async function fetchActiveClientsFromAdmin(webhookUrl: string): Promise<ActiveCl
 async function main() {
   const keys = {
     jina: process.env.JINA_API_KEY || '',
+    firecrawl: process.env.FIRECRAWL_API_KEY || '',
     gemini: process.env.GEMINI_API_KEY || '',
     sheetUrl: process.env.SHEET_WEBHOOK_URL || ''
   };
 
   if (!keys.jina || !keys.gemini || !keys.sheetUrl) {
-    console.error('❌ Thiếu biến môi trường cấu hình bắt buộc!');
+    console.error('❌ Thiếu biến môi trường cấu hình bắt buộc (JINA, GEMINI, SHEET_WEBHOOK)!');
     process.exit(1);
   }
 
@@ -37,13 +39,13 @@ async function main() {
 
   console.log(`🚀 Tìm thấy ${activeClients.length} khách hàng đang hoạt động. Bắt đầu quét...`);
 
-  // Chạy lần lượt từng khách hàng (mỗi khách mất ~4-5s)
+  // Chạy lần lượt từng khách hàng
   for (let i = 0; i < activeClients.length; i++) {
     const client = activeClients[i];
 
     console.log(`\n======================================================`);
     console.log(`[${i + 1}/${activeClients.length}] KHÁCH HÀNG: [${client.name}] | GÓI: [${client.sku}]`);
-    console.log(`🎯 ĐỊNH NGHĨA NGÁCH (Cột H): "${client.nicheDefinition}"`);
+    console.log(`🎯 ĐỊNH NGHĨA NGÁCH: "${client.nicheDefinition}"`);
     console.log(`📍 SPREADSHEET ID: [${client.spreadsheetId}]`);
     console.log(`======================================================`);
 
@@ -51,11 +53,19 @@ async function main() {
     const dynamicDorks = await generateDorksFromNiche(client.nicheDefinition, keys.gemini);
     console.log(`🤖 AI sinh ${dynamicDorks.length} câu Dorking:`, dynamicDorks);
 
-    // Bước 2: Cào Jina theo mốc cào (qdr:d hoặc qdr:w)
+    // Bước 2: Cào dữ liệu qua Jina + Firecrawl dự phòng
     const rawPosts: RawScrapedPost[] = [];
     for (const dork of dynamicDorks) {
+      console.log(`🔍 [Jina Search]: ${dork}`);
       const jinaRes = await searchJina(dork, keys.jina, client.timeFilter);
       rawPosts.push(...jinaRes);
+
+      // Kích hoạt Firecrawl nếu Jina không ra bài hoặc có API key Firecrawl
+      if (keys.firecrawl && jinaRes.length === 0) {
+        console.log(`🔥 [Firecrawl Fallback]: "${dork}"`);
+        const fcRes = await searchFirecrawl(dork, keys.firecrawl, client.timeFilter);
+        rawPosts.push(...fcRes);
+      }
       await sleep(300);
     }
 
