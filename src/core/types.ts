@@ -6,27 +6,15 @@ export interface ExtractedItem {
   scoreOrPriority: string;
   title: string;
   contentOrBrief: string;
-  extraField1: string;  // Ngân sách / Nhu cầu chi tiết
-  extraField2: string;  // SĐT / Liên hệ / Link tác giả
+  extraField1: string;
+  extraField2: string;
   url: string;
 }
 
-export interface TaskDefinition {
-  id: string;                     // ID task (vd: 'client-tuan-bds')
-  name: string;                   // Tên khách hàng & Ngành nghề
-  enabled: boolean;               // Bật/tắt quét cho khách này
-  spreadsheetId: string;          // ID file Google Sheet riêng của khách
-  timeFilter: 'qdr:h' | 'qdr:d' | 'qdr:w' | 'qdr:m'; // Mốc thời gian (qdr:d = 24h, qdr:w = 7 ngày)
-  dorks: string[];                // Danh sách Google Dorking riêng của khách
-  aiPrompt: {
-    systemRole: string;           // Vai trò thẩm định của AI
-    validationRules: string;      // Tiêu chuẩn duyệt & loại bỏ bài rác
-    categoryTags: string[];       // Danh sách Tag phân loại
-    extraField1Label: string;     // Ý nghĩa cột H
-    extraField2Label: string;     // Ý nghĩa cột I
-  };
-  dynamicDorks?: {
-    enabled: boolean;
-    instruction: string;
-  };
+export interface ActiveClientFromAdmin {
+  name: string;
+  spreadsheetId: string;
+  nicheDefinition: string; // Chuỗi phân cấp Cột H (Ngành | Nhu cầu | Khu vực | -Loại trừ)
+  sku: string;             // Mã SKU (Cột E)
+  timeFilter: string;      // Mốc cào (Cột I: qdr:d hoặc qdr:w)
 }
