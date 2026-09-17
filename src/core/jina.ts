@@ -49,7 +49,7 @@ export async function searchJina(query: string, apiKey: string, timeFilter = 'qd
       }
     }
   } catch (err: any) {
-    console.warn(`[Jina] Bỏ qua dork "${query}" do timeout/lỗi: ${err.message}`);
+    console.warn(`[Jina] Bỏ qua dork "${query}": ${err.message}`);
   }
 
   return posts;
