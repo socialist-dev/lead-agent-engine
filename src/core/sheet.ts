@@ -5,16 +5,17 @@ export async function exportToClientSheet(spreadsheetId: string, items: Extracte
 
   try {
     const res = await fetch(webhookUrl, {
+      signal: AbortSignal.timeout(15000),
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        spreadsheetId: spreadsheetId, // Gửi đúng ID file Sheet riêng của khách
+        spreadsheetId: spreadsheetId,
         jobs: items
       })
     });
     const result = await res.text();
-    console.log(`📊 [Google Sheet] Đã chèn ${items.length} dòng vào Sheet [${spreadsheetId}]:`, result);
-  } catch (err) {
-    console.error(`[Google Sheet] Lỗi xuất dữ liệu:`, err);
+    console.log(`📊 [Google Sheet] Đã bơm ${items.length} lead vào Sheet [${spreadsheetId}]:`, result);
+  } catch (err: any) {
+    console.error(`[Google Sheet] Lỗi xuất dữ liệu:`, err.message);
   }
 }
