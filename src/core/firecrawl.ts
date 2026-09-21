@@ -2,7 +2,6 @@ import { RawScrapedPost, detectPlatform } from './jina';
 
 export async function searchFirecrawl(query: string, apiKey: string, timeFilter = 'qdr:d'): Promise<RawScrapedPost[]> {
   if (!apiKey) return [];
-  const fullQuery = `${query} &tbs=${timeFilter}`;
   const posts: RawScrapedPost[] = [];
 
   try {
@@ -13,7 +12,10 @@ export async function searchFirecrawl(query: string, apiKey: string, timeFilter 
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ query: fullQuery, searchOptions: { limit: 10 } })
+      body: JSON.stringify({ 
+        query: query, // 👉 Chỉ gửi truy vấn sạch, không nối &tbs= vào text!
+        searchOptions: { limit: 10 } 
+      })
     });
 
     if (!res.ok) return [];
