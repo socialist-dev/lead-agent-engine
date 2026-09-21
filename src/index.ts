@@ -4,17 +4,35 @@ import { generateDorksFromNiche, batchEvaluateContent, sleep } from './core/gemi
 import { exportToClientSheet } from './core/sheet';
 import { ActiveClientFromAdmin } from './core/types';
 
-// 1. Lấy danh sách khách hàng đang BẬT từ Google Sheet Admin
-async function fetchActiveClientsFromAdmin(webhookUrl: string): Promise<ActiveClientFromAdmin[]> {
-  try {
-    console.log('📡 Đang đồng bộ danh sách khách hàng từ Admin Dashboard...');
-    const res = await fetch(webhookUrl, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) return [];
-    return (await res.json()) as ActiveClientFromAdmin[];
-  } catch (err: any) {
-    console.error('❌ Lỗi kết nối Sheet Admin:', err.message);
-    return [];
+// 1. Lấy danh sách khách hàng từ Sheet Admin (Có cơ chế Retry & Timeout 30s)
+async function fetchActiveClientsFromAdmin(webhookUrl: string, maxRetries = 2): Promise<ActiveClientFromAdmin[]> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`📡 Đang đồng bộ danh sách khách hàng từ Admin Dashboard (Lần ${attempt}/${maxRetries})...`);
+      
+      const res = await fetch(webhookUrl, {
+        signal: AbortSignal.timeout(30000), // ⚡ Tăng lên 30s để chống lỗi Cold Start của Google
+        redirect: 'follow'
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`HTTP ${res.status}: ${errText.slice(0, 100)}`);
+      }
+
+      const clients = (await res.json()) as ActiveClientFromAdmin[];
+      return clients;
+    } catch (err: any) {
+      console.warn(`⚠️ Lần ${attempt} chưa lấy được: ${err.message}`);
+      if (attempt < maxRetries) {
+        console.log('⏳ Chờ 3s để máy chủ Google sẵn sàng và thử lại...');
+        await sleep(3000);
+      } else {
+        console.error('❌ Lỗi kết nối Sheet Admin sau các lần thử:', err.message);
+      }
+    }
   }
+  return [];
 }
 
 async function main() {
@@ -26,7 +44,7 @@ async function main() {
   };
 
   if (!keys.jina || !keys.gemini || !keys.sheetUrl) {
-    console.error('❌ Thiếu biến môi trường cấu hình bắt buộc (JINA, GEMINI, SHEET_WEBHOOK)!');
+    console.error('❌ Thiếu biến môi trường cấu hình bắt buộc!');
     process.exit(1);
   }
 
@@ -60,7 +78,6 @@ async function main() {
       const jinaRes = await searchJina(dork, keys.jina, client.timeFilter);
       rawPosts.push(...jinaRes);
 
-      // Kích hoạt Firecrawl nếu Jina không ra bài hoặc có API key Firecrawl
       if (keys.firecrawl && jinaRes.length === 0) {
         console.log(`🔥 [Firecrawl Fallback]: "${dork}"`);
         const fcRes = await searchFirecrawl(dork, keys.firecrawl, client.timeFilter);
