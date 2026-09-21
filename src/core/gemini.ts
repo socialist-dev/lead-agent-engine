@@ -3,19 +3,34 @@ import { RawScrapedPost } from './jina';
 
 export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// 1. HÀM AI TỰ ĐỘNG TẠO DORKING THỜI GIAN THỰC TỪ CỘT H TRÊN SHEET
+// =========================================================================
+// 🌟 1. HÀM AI TỰ ĐỘNG TẠO DORKING ĐA TẦNG THỰC CHIẾN (CHỐNG LỖI 0 BÀI)
+// =========================================================================
 export async function generateDorksFromNiche(nicheString: string, geminiKey: string): Promise<string[]> {
   const MODEL = 'gemini-3.1-flash-lite';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${geminiKey}`;
 
   const prompt = `
-Dưới đây là định nghĩa ngách khách hàng do người dùng nhập từ trang quản trị:
-"${nicheString}"
+Bạn là chuyên gia Google Dorking thượng thừa chuyên săn tìm khách hàng tiềm năng (Lead Generation).
+Người dùng nhập yêu cầu ngách: "${nicheString}"
 
-Nhiệm vụ: Hãy tạo ra 4 câu Google Dorking tiếng Việt cực kỳ linh hoạt (bao gồm cả văn nói, từ lóng, cụm từ tìm kiếm trên Threads, Facebook Groups, TikTok, Diễn đàn) để săn đúng những bài đăng tìm mua/thuê/sử dụng dịch vụ này.
-Quy tắc:
-- Tận dụng từ khóa chính, khu vực địa lý và từ khóa loại trừ (-) nếu có trong chuỗi.
-- Trả về đúng mảng JSON gồm 4 chuỗi dorking: ["dork 1", "dork 2", "dork 3", "dork 4"]
+Nhiệm vụ: Phân tích yêu cầu trên và tạo ra đúng 4 câu Google Dorking từ rộng đến sâu để tìm các bài đăng của NGƯỜI CẦN MUA / CẦN THUÊ / CẦN TƯ VẤN / TÌM DỊCH VỤ.
+
+QUY TẮC BẮT BUỘC ĐỂ KHÔNG BỊ 0 KẾT QUẢ:
+1. TUYỆT ĐỐI KHÔNG đưa các từ mô tả như "tìm lead", "tìm khách", "nhu cầu", "khách hàng" vào câu Dorking.
+2. TỰ ĐỘNG BỔ SUNG TỪ LÓNG & TÊN VIẾT TẮT PHỔ BIẾN:
+   - Ô tô: mercedes, "mec", "mer", bmw, "bim", audi, c200, c300, glc, e300...
+   - Bất động sản: ("cần mua" OR "tìm mua" OR "tài chính" OR "hỏi mua" OR "tư vấn") + mở rộng tên dự án, khu vực.
+   - Dịch vụ / Khác: dùng từ ngữ đời thường người mua hay dùng khi đăng bài hỏi.
+3. CẤU TRÚC 4 CÂU DORKING:
+   - Dork 1 (Rộng toàn mạng - không giới hạn site): Ý định mua + Sản phẩm/Ngành + Địa điểm
+   - Dork 2 (Văn nói hỏi giá/tư vấn): ("bác nào bán" OR "ai có" OR "tư vấn giúp" OR "tài chính" OR "inbox giá") + Sản phẩm + Địa điểm
+   - Dork 3 (Mạng xã hội): (site:threads.net OR site:facebook.com/groups) + ("cần mua" OR "tìm" OR "hỏi") + Sản phẩm
+   - Dork 4 (Diễn đàn / Video): (site:tiktok.com OR site:youtube.com OR site:voz.vn OR site:otofun.net) + Sản phẩm + Ý định mua
+4. KHÔNG dùng dấu trừ loại trừ (-) bừa bãi làm mất kết quả (như -"dự án" trên web bđs).
+
+Trả về đúng mảng JSON gồm 4 chuỗi:
+["dork 1", "dork 2", "dork 3", "dork 4"]
 `;
 
   try {
@@ -25,18 +40,46 @@ Quy tắc:
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: 'application/json' }
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'ARRAY',
+            items: { type: 'STRING' }
+          }
+        }
       })
     });
+
+    if (!res.ok) throw new Error("API Error");
+
     const data = (await res.json()) as any;
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    return text ? JSON.parse(text) : [nicheString];
-  } catch {
-    return [nicheString];
+    let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    
+    // Làm sạch khối markdown nếu có
+    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    const dorks = JSON.parse(text) as string[];
+
+    if (Array.isArray(dorks) && dorks.length > 0) {
+      return dorks;
+    }
+    throw new Error("Invalid array");
+  } catch (err: any) {
+    console.warn(`[Gemini Dork Gen] Fallback tạo dork thủ công cho ngách: "${nicheString}"`);
+    
+    // Tự động làm sạch và tạo Dorking dự phòng chuẩn nếu AI gặp sự cố
+    const cleanNiche = nicheString.replace(/tìm lead|nhu cầu|khách hàng/gi, "").trim();
+    return [
+      `("cần mua" OR "tìm mua" OR "tư vấn") (${cleanNiche})`,
+      `("bác nào bán" OR "ai có" OR "inbox giá") (${cleanNiche})`,
+      `site:threads.net ("cần mua" OR "tìm" OR "muốn mua") (${cleanNiche})`,
+      `site:facebook.com/groups ("cần mua" OR "tìm mua") (${cleanNiche})`
+    ];
   }
 }
 
-// 2. HÀM AI THẨM ĐỊNH HÀNG LOẠT & PHÂN TẦNG THỜI GIAN THEO GÓI
+// =========================================================================
+// 🌟 2. HÀM AI THẨM ĐỊNH HÀNG LOẠT (SINGLE BATCH) & PHÂN TẦNG THỜI GIAN
+// =========================================================================
 export async function batchEvaluateContent(
   posts: RawScrapedPost[],
   client: ActiveClientFromAdmin,
@@ -137,12 +180,16 @@ TIÊU CHÍ TRẢ VỀ:
       })
     });
 
-    if (!response.ok) return [];
+    if (!response.ok) {
+      console.error('[Gemini Batch] Lỗi API:', await response.text());
+      return [];
+    }
 
     const data = (await response.json()) as any;
-    const jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    let jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!jsonText) return [];
 
+    jsonText = jsonText.replace(/```json/g, "").replace(/```/g, "").trim();
     const approvedItems = JSON.parse(jsonText) as any[];
     const validItems: ExtractedItem[] = [];
 
