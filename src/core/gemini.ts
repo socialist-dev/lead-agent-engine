@@ -4,33 +4,32 @@ import { RawScrapedPost } from './jina';
 export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // =========================================================================
-// 🌟 1. HÀM AI TỰ ĐỘNG TẠO DORKING ĐA TẦNG THỰC CHIẾN (CHỐNG LỖI 0 BÀI)
+// 🌟 1. HÀM AI TẠO TRUY VẤN TỰ NHIÊN & DORKING LINH HOẠT (KHÔNG BÓP NGHẸT TỪ KHÓA)
 // =========================================================================
 export async function generateDorksFromNiche(nicheString: string, geminiKey: string): Promise<string[]> {
   const MODEL = 'gemini-3.1-flash-lite';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${geminiKey}`;
 
   const prompt = `
-Bạn là chuyên gia Google Dorking thượng thừa chuyên săn tìm khách hàng tiềm năng (Lead Generation).
-Người dùng nhập yêu cầu ngách: "${nicheString}"
+Bạn là chuyên gia săn Lead thực chiến trên mạng xã hội Việt Nam (Threads, Facebook, TikTok, Diễn đàn).
+Khách hàng muốn tìm kiếm khách hàng có nhu cầu: "${nicheString}"
 
-Nhiệm vụ: Phân tích yêu cầu trên và tạo ra đúng 4 câu Google Dorking từ rộng đến sâu để tìm các bài đăng của NGƯỜI CẦN MUA / CẦN THUÊ / CẦN TƯ VẤN / TÌM DỊCH VỤ.
+Nhiệm vụ: Hãy tạo ra đúng 4 câu tìm kiếm Google/Dorking tự nhiên, đơn giản và hiệu quả nhất để gom được NHIỀU BÀI VIẾT NHẤT.
 
 QUY TẮC BẮT BUỘC ĐỂ KHÔNG BỊ 0 KẾT QUẢ:
-1. TUYỆT ĐỐI KHÔNG đưa các từ mô tả như "tìm lead", "tìm khách", "nhu cầu", "khách hàng" vào câu Dorking.
-2. TỰ ĐỘNG BỔ SUNG TỪ LÓNG & TÊN VIẾT TẮT PHỔ BIẾN:
-   - Ô tô: mercedes, "mec", "mer", bmw, "bim", audi, c200, c300, glc, e300...
-   - Bất động sản: ("cần mua" OR "tìm mua" OR "tài chính" OR "hỏi mua" OR "tư vấn") + mở rộng tên dự án, khu vực.
-   - Dịch vụ / Khác: dùng từ ngữ đời thường người mua hay dùng khi đăng bài hỏi.
-3. CẤU TRÚC 4 CÂU DORKING:
-   - Dork 1 (Rộng toàn mạng - không giới hạn site): Ý định mua + Sản phẩm/Ngành + Địa điểm
-   - Dork 2 (Văn nói hỏi giá/tư vấn): ("bác nào bán" OR "ai có" OR "tư vấn giúp" OR "tài chính" OR "inbox giá") + Sản phẩm + Địa điểm
-   - Dork 3 (Mạng xã hội): (site:threads.net OR site:facebook.com/groups) + ("cần mua" OR "tìm" OR "hỏi") + Sản phẩm
-   - Dork 4 (Diễn đàn / Video): (site:tiktok.com OR site:youtube.com OR site:voz.vn OR site:otofun.net) + Sản phẩm + Ý định mua
-4. KHÔNG dùng dấu trừ loại trừ (-) bừa bãi làm mất kết quả (như -"dự án" trên web bđs).
+1. KHÔNG dùng ngoặc đơn lồng nhau phức tạp kiểu: (A OR B) (C OR D) (E OR F).
+2. DÙNG CÂU TỪ TỰ NHIÊN NGƯỜI VIỆT HAY ĐĂNG:
+   - Thay vì ép ngoặc, hãy viết: tư vấn mua xe mercedes OR bmw OR audi sài gòn
+   - Thay vì ép ngoặc, hãy viết: cần mua căn hộ vinhomes đà nẵng
+   - Thay vì ép ngoặc, hãy viết: nên mở tài khoản chứng khoán sàn nào uy tín
+3. MẪU 4 CÂU TRẢ VỀ:
+   - Câu 1 (Tìm nhu cầu rộng): [Hành động: cần mua/tư vấn/tìm] + [Tên sản phẩm/dịch vụ] + [Địa điểm nếu có]
+   - Câu 2 (Văn nói hỏi kinh nghiệm): nên mua/chọn [Sản phẩm] nào OR xin review [Sản phẩm]
+   - Câu 3 (Mạng xã hội Threads/Facebook): site:threads.net OR site:facebook.com/groups [Sản phẩm ngắn gọn]
+   - Câu 4 (Diễn đàn/Video): site:voz.vn OR site:tiktok.com OR site:otofun.net [Sản phẩm]
 
 Trả về đúng mảng JSON gồm 4 chuỗi:
-["dork 1", "dork 2", "dork 3", "dork 4"]
+["câu 1", "câu 2", "câu 3", "câu 4"]
 `;
 
   try {
@@ -41,11 +40,7 @@ Trả về đúng mảng JSON gồm 4 chuỗi:
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: 'ARRAY',
-            items: { type: 'STRING' }
-          }
+          responseMimeType: 'application/json'
         }
       })
     });
@@ -54,8 +49,6 @@ Trả về đúng mảng JSON gồm 4 chuỗi:
 
     const data = (await res.json()) as any;
     let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    
-    // Làm sạch khối markdown nếu có
     text = text.replace(/```json/g, "").replace(/```/g, "").trim();
     const dorks = JSON.parse(text) as string[];
 
@@ -64,21 +57,21 @@ Trả về đúng mảng JSON gồm 4 chuỗi:
     }
     throw new Error("Invalid array");
   } catch (err: any) {
-    console.warn(`[Gemini Dork Gen] Fallback tạo dork thủ công cho ngách: "${nicheString}"`);
+    console.warn(`[Gemini Dork Gen] Tự động tạo dork thông minh cho ngách: "${nicheString}"`);
     
-    // Tự động làm sạch và tạo Dorking dự phòng chuẩn nếu AI gặp sự cố
-    const cleanNiche = nicheString.replace(/tìm lead|nhu cầu|khách hàng/gi, "").trim();
+    // Tách các từ khóa chính một cách thông minh
+    const clean = nicheString.replace(/tìm lead|nhu cầu|khách hàng/gi, "").replace(/\|/g, " ").trim();
     return [
-      `("cần mua" OR "tìm mua" OR "tư vấn") (${cleanNiche})`,
-      `("bác nào bán" OR "ai có" OR "inbox giá") (${cleanNiche})`,
-      `site:threads.net ("cần mua" OR "tìm" OR "muốn mua") (${cleanNiche})`,
-      `site:facebook.com/groups ("cần mua" OR "tìm mua") (${cleanNiche})`
+      `tư vấn ${clean}`,
+      `cần tìm ${clean}`,
+      `site:threads.net ${clean}`,
+      `site:facebook.com/groups ${clean}`
     ];
   }
 }
 
 // =========================================================================
-// 🌟 2. HÀM AI THẨM ĐỊNH HÀNG LOẠT (SINGLE BATCH) & PHÂN TẦNG THỜI GIAN
+// 🌟 2. HÀM AI THẨM ĐỊNH HÀNG LOẠT (SINGLE BATCH)
 // =========================================================================
 export async function batchEvaluateContent(
   posts: RawScrapedPost[],
@@ -98,21 +91,20 @@ export async function batchEvaluateContent(
     day: '2-digit'
   });
 
-  // PHÂN TẦNG THỜI GIAN DỰA THEO MÃ SKU / GÓI DỊCH VỤ
+  // Phân tầng thời gian
   let timeFilterRule = '';
-  const isHighTier = client.sku.includes('PRO') || client.sku.includes('TRI'); // Gói Cao Cấp hoặc Dùng Thử 0đ
+  const isHighTier = client.sku.includes('PRO') || client.sku.includes('TRI');
 
   if (isHighTier) {
     timeFilterRule = `
     🔥 CHẾ ĐỘ: [GÓI CAO CẤP REAL-TIME].
-    - ƯU TIÊN DUYỆT CÁC BÀI ĐĂNG TRONG VÒNG 24 GIỜ QUA ("vừa xong", "vài giờ trước", "1 ngày trước").
-    - Bóc tách đầy đủ và chính xác số điện thoại/Zalo, ngân sách và liên hệ trực tiếp.
+    - DUYỆT CÁC BÀI ĐĂNG MỚI TRONG VÒNG 24 GIỜ QUA HOẶC GẦN ĐÂY.
+    - Bóc tách chính xác số điện thoại/Zalo, ngân sách và nhu cầu của người mua.
     `;
   } else {
     timeFilterRule = `
-    📦 CHẾ ĐỘ: [GÓI TRẢI NGHIỆM 99K & TIÊU CHUẨN - DATA CÓ ĐỘ TRỄ].
-    - CHỈ DUYỆT các bài đăng từ 2 ĐẾN 7 NGÀY TRƯỚC ("2 ngày trước", "3 ngày trước", "4-6 ngày trước").
-    - ⚠️ TUYỆT ĐỐI LOẠI BỎ ("isValid = false") các bài đăng siêu mới trong vòng 48 giờ qua ("vừa xong", "vài giờ trước", "1 ngày trước") để bảo lưu tính năng cho gói Cao Cấp.
+    📦 CHẾ ĐỘ: [GÓI TRẢI NGHIỆM & TIÊU CHUẨN].
+    - DUYỆT các bài đăng trong vòng 7 ngày qua.
     - LOẠI BỎ bài quá 7 ngày (từ tháng trước, năm ngoái).
     `;
   }
@@ -138,9 +130,9 @@ ${formattedPostsText}
 ==========================
 
 QUY TẮC THẨM ĐỊNH CHO KHÁCH HÀNG [${client.name}]:
-1. TIÊU CHÍ DUYỆT: Người đăng bài có nhu cầu THẬT sự tìm mua/thuê/sử dụng dịch vụ đúng theo mô tả: "${client.nicheDefinition}".
-2. TIÊU CHÍ LOẠI BỎ: Người bán/môi giới chào dịch vụ, bài quảng cáo, bài spam.
-3. QUY TẮC PHÂN TẦNG THỜI GIAN THEO GÓI DỊCH VỤ:
+1. TIÊU CHÍ DUYỆT: Người đăng có nhu cầu thật sự tìm mua/thuê/tư vấn/sử dụng dịch vụ liên quan đến: "${client.nicheDefinition}".
+2. TIÊU CHÍ LOẠI BỎ: Người bán/môi giới chào dịch vụ, bài quảng cáo spam.
+3. QUY TẮC THỜI GIAN:
 ${timeFilterRule}
 
 TIÊU CHÍ TRẢ VỀ:
@@ -180,10 +172,7 @@ TIÊU CHÍ TRẢ VỀ:
       })
     });
 
-    if (!response.ok) {
-      console.error('[Gemini Batch] Lỗi API:', await response.text());
-      return [];
-    }
+    if (!response.ok) return [];
 
     const data = (await response.json()) as any;
     let jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
