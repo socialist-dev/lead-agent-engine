@@ -11,16 +11,23 @@ export function detectPlatform(url: string): string {
   if (url.includes('facebook.com')) return 'Facebook';
   if (url.includes('x.com') || url.includes('twitter.com')) return 'X';
   if (url.includes('voz.vn')) return 'Voz';
+  if (url.includes('otofun.net') || url.includes('otosaigon.com')) return 'Diễn đàn Ô tô';
   return 'Web / Diễn đàn';
 }
 
 export async function searchJina(query: string, apiKey: string, timeFilter = 'qdr:d'): Promise<RawScrapedPost[]> {
-  const url = `https://s.jina.ai/${encodeURIComponent(query)}?tbs=${timeFilter}`;
+  // 🌟 Chuẩn hóa: Nếu timeFilter có dấu phẩy thì chỉ lấy mã đầu tiên hợp lệ
+  let validTimeParam = 'qdr:d';
+  if (timeFilter.includes('qdr:w')) {
+    validTimeParam = 'qdr:w';
+  }
+
+  const url = `https://s.jina.ai/${encodeURIComponent(query)}?tbs=${validTimeParam}`;
   const posts: RawScrapedPost[] = [];
 
   try {
     const res = await fetch(url, {
-      signal: AbortSignal.timeout(10000), // Timeout 10s chống treo
+      signal: AbortSignal.timeout(10000),
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'X-Locale': 'vi-VN',
