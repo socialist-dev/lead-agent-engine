@@ -5,7 +5,7 @@ export async function exportToClientSheet(spreadsheetId: string, items: Extracte
 
   try {
     const res = await fetch(webhookUrl, {
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(30000), // ⚡ 30s an toàn
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
