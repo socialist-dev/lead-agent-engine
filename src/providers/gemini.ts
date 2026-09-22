@@ -1,26 +1,17 @@
-import { ExtractedItem, ActiveClientFromAdmin } from './types';
-import { RawScrapedPost } from './jina';
+import { ExtractedItem, ActiveClientFromAdmin, RawScrapedPost } from '../types';
+import { getTimeFilterRule } from '../config';
+import { formatScanTimeVN, cleanPhoneNumber } from '../utils';
+import { httpFetch } from '../infra/http-client';
+import { geminiRateLimiter } from '../infra/rate-limiter';
+import { logger } from '../infra/logger';
 
-export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-// Hàm chuẩn hóa ngày giờ quét theo đúng định dạng Việt Nam: dd/MM/yyyy HH:mm:ss
-function formatScanTimeVN(): string {
-  const now = new Date();
-  // Chuyển sang giờ Việt Nam (UTC+7)
-  const vnTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
-  const d = String(vnTime.getDate()).padStart(2, '0');
-  const m = String(vnTime.getMonth() + 1).padStart(2, '0');
-  const y = vnTime.getFullYear();
-  const h = String(vnTime.getHours()).padStart(2, '0');
-  const min = String(vnTime.getMinutes()).padStart(2, '0');
-  const s = String(vnTime.getSeconds()).padStart(2, '0');
-  return `${d}/${m}/${y} ${h}:${min}:${s}`;
-}
-
-// 1. HÀM AI TẠO DORKING TỰ NHIÊN
-export async function generateDorksFromNiche(nicheString: string, geminiKey: string): Promise<string[]> {
-  const MODEL = 'gemini-3.1-flash-lite';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${geminiKey}`;
+export async function generateDorksFromNiche(
+  nicheString: string,
+  geminiKey: string,
+  model = 'gemini-3.1-flash-lite'
+): Promise<string[]> {
+  await geminiRateLimiter.acquire();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
 
   const prompt = `
 Bạn là chuyên gia săn Lead trên mạng xã hội Việt Nam.
@@ -36,27 +27,29 @@ Trả về đúng mảng JSON gồm 4 chuỗi:
 `;
 
   try {
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(10000),
+    const res = await httpFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: { responseMimeType: 'application/json' }
-      })
+      }),
+      timeoutMs: 15000,
+      retries: 2
     });
 
-    if (!res.ok) throw new Error("API Error");
+    if (!res.ok) throw new Error(`Gemini HTTP ${res.status}`);
 
     const data = (await res.json()) as any;
-    let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    text = text.replace(/```json/g, '').replace(/```/g, '').trim();
     const dorks = JSON.parse(text) as string[];
 
     if (Array.isArray(dorks) && dorks.length > 0) return dorks;
-    throw new Error("Invalid array");
+    throw new Error('Invalid array response from Gemini');
   } catch (err: any) {
-    const clean = nicheString.replace(/tìm lead|nhu cầu|khách hàng/gi, "").replace(/\|/g, " ").trim();
+    logger.warn(`[Gemini Dorking] Fallback to regex dorks due to error: ${err.message}`);
+    const clean = nicheString.replace(/tìm lead|nhu cầu|khách hàng/gi, '').replace(/\|/g, ' ').trim();
     return [
       `tư vấn ${clean}`,
       `cần tìm ${clean}`,
@@ -66,16 +59,16 @@ Trả về đúng mảng JSON gồm 4 chuỗi:
   }
 }
 
-// 2. HÀM AI THẨM ĐỊNH HÀNG LOẠT & ĐIỀN ĐỦ 100% CÁC CỘT DỮ LIỆU
 export async function batchEvaluateContent(
   posts: RawScrapedPost[],
   client: ActiveClientFromAdmin,
-  geminiKey: string
+  geminiKey: string,
+  model = 'gemini-3.1-flash-lite'
 ): Promise<ExtractedItem[]> {
   if (posts.length === 0) return [];
 
-  const MODEL = 'gemini-3.1-flash-lite';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${geminiKey}`;
+  await geminiRateLimiter.acquire();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
 
   const now = new Date();
   const todayVN = now.toLocaleDateString('vi-VN', {
@@ -85,26 +78,19 @@ export async function batchEvaluateContent(
     day: '2-digit'
   });
 
-  let timeFilterRule = '';
-  const isHighTier = client.sku.includes('PRO') || client.sku.includes('TRI');
+  const { ruleText: timeFilterRule } = getTimeFilterRule(client.sku);
 
-  if (isHighTier) {
-    timeFilterRule = `
-    🔥 GÓI CAO CẤP: DUYỆT CÁC BÀI ĐĂNG MỚI TRONG 24 GIỜ QUA HOẶC GẦN ĐÂY.
-    `;
-  } else {
-    timeFilterRule = `
-    📦 GÓI TIÊU CHUẨN: DUYỆT các bài đăng trong vòng 7 ngày qua. LOẠI BỎ bài quá 7 ngày.
-    `;
-  }
-
-  const formattedPostsText = posts.map((post, index) => `
+  const formattedPostsText = posts
+    .map(
+      (post, index) => `
 --- [BÀI VIẾT #${index + 1}] ---
 URL_GỐC: ${post.url}
 PLATFORM: ${post.platform}
 NỘI DUNG:
 ${post.rawContent.slice(0, 1500)}
-`).join('\n\n');
+`
+    )
+    .join('\n\n');
 
   const prompt = `
 Bạn là chuyên gia phân tích và bóc tách dữ liệu Lead cho khách hàng: "${client.nicheDefinition}".
@@ -133,8 +119,7 @@ CHỈ TRẢ VỀ MẢNG JSON CÁC BÀI ĐẠT CHUẨN CÓ NHU CẦU THẬT SỰ.
 `;
 
   try {
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(30000),
+    const response = await httpFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -156,38 +141,50 @@ CHỈ TRẢ VỀ MẢNG JSON CÁC BÀI ĐẠT CHUẨN CÓ NHU CẦU THẬT SỰ.
                 extraField1: { type: 'STRING' },
                 extraField2: { type: 'STRING' }
               },
-              required: ['url', 'platform', 'postedAgo', 'categoryTag', 'scoreOrPriority', 'title', 'contentOrBrief', 'extraField1', 'extraField2']
+              required: [
+                'url',
+                'platform',
+                'postedAgo',
+                'categoryTag',
+                'scoreOrPriority',
+                'title',
+                'contentOrBrief',
+                'extraField1',
+                'extraField2'
+              ]
             }
           }
         }
-      })
+      }),
+      timeoutMs: 35000,
+      retries: 2
     });
 
-    if (!response.ok) return [];
+    if (!response.ok) {
+      logger.error(`[Gemini Batch] HTTP Error ${response.status}`);
+      return [];
+    }
 
     const data = (await response.json()) as any;
     let jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!jsonText) return [];
 
-    jsonText = jsonText.replace(/```json/g, "").replace(/```/g, "").trim();
+    jsonText = jsonText.replace(/```json/g, '').replace(/```/g, '').trim();
     const approvedItems = JSON.parse(jsonText) as any[];
     const validItems: ExtractedItem[] = [];
 
-    const scanTimeFormatted = formatScanTimeVN(); // Chuẩn định dạng: dd/MM/yyyy HH:mm:ss
+    const scanTimeFormatted = formatScanTimeVN();
 
     for (const item of approvedItems) {
       if (item.url) {
-        let cleanContact = String(item.extraField2 || "").trim();
-        if (cleanContact.includes("http://") || cleanContact.includes("https://") || cleanContact.includes("facebook.com") || cleanContact === "") {
-          cleanContact = "Chưa có SĐT (Inbox qua link bài)";
-        }
+        const cleanContact = cleanPhoneNumber(item.extraField2);
 
-        let cleanTime = String(item.postedAgo || "Mới đăng gần đây").trim();
+        let cleanTime = String(item.postedAgo || 'Mới đăng gần đây').trim();
         cleanTime = cleanTime
-          .replace(/days? ago/gi, "ngày trước")
-          .replace(/hours? ago/gi, "giờ trước")
-          .replace(/mins? ago/gi, "phút trước")
-          .replace(/N\/A/gi, "Mới đăng gần đây");
+          .replace(/days? ago/gi, 'ngày trước')
+          .replace(/hours? ago/gi, 'giờ trước')
+          .replace(/mins? ago/gi, 'phút trước')
+          .replace(/N\/A/gi, 'Mới đăng gần đây');
 
         validItems.push({
           scanTime: scanTimeFormatted,
@@ -206,7 +203,7 @@ CHỈ TRẢ VỀ MẢNG JSON CÁC BÀI ĐẠT CHUẨN CÓ NHU CẦU THẬT SỰ.
 
     return validItems;
   } catch (err: any) {
-    console.error('[Gemini Batch] Lỗi:', err.message);
+    logger.error(`[Gemini Batch] Lỗi: ${err.message}`);
     return [];
   }
 }

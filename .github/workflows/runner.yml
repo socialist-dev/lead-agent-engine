@@ -18,13 +18,23 @@ jobs:
         with:
           node-version: 20
 
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+
       - name: Install dependencies
         run: npm install
 
       - name: Run Lead Engine
+        timeout-minutes: 10
         env:
           JINA_API_KEY: ${{ secrets.JINA_API_KEY }}
           FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SHEET_WEBHOOK_URL: ${{ secrets.SHEET_WEBHOOK_URL }}
+          GEMINI_MODEL: 'gemini-3.1-flash-lite'
+          CONCURRENCY_LIMIT: '3'
+          LOG_LEVEL: 'info'
         run: npm run start
