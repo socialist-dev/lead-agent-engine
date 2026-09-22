@@ -5,3 +5,4 @@ dist/
 LOG_*.md
 IDEAS_*.md
 walkthrough.md
+.agents/
