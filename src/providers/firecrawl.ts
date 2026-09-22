@@ -20,22 +20,31 @@ export async function searchFirecrawl(
       },
       body: JSON.stringify({
         query: query,
-        searchOptions: { limit: 10 }
+        limit: 10,
+        scrapeOptions: {
+          formats: ['markdown']
+        }
       }),
-      timeoutMs: 12000,
+      timeoutMs: 15000,
       retries: 2
     });
 
-    if (!res.ok) return [];
+    if (!res.ok) {
+      const errText = await res.text();
+      logger.warn(`[Firecrawl] HTTP Error ${res.status}: ${errText.slice(0, 100)}`);
+      return [];
+    }
+
     const json = (await res.json()) as any;
-    const results = json.data || [];
+    const results = json.data || json.results || [];
 
     for (const item of results) {
-      if (item.url && item.markdown) {
+      const textContent = item.markdown || item.description || item.snippet || item.title || '';
+      if (item.url && textContent) {
         posts.push({
           platform: detectPlatform(item.url),
           url: item.url,
-          rawContent: `Title: ${item.title || ''}\nURL Source: ${item.url}\n\n${item.markdown}`
+          rawContent: `Title: ${item.title || ''}\nURL Source: ${item.url}\n\n${textContent}`
         });
       }
     }
@@ -45,3 +54,4 @@ export async function searchFirecrawl(
 
   return posts;
 }
+
