@@ -8,8 +8,9 @@ export async function searchJina(
   apiKey: string,
   timeFilter = 'qdr:d'
 ): Promise<RawScrapedPost[]> {
+  const safeTime = String(timeFilter || 'qdr:d');
   let validTimeParam = 'qdr:d';
-  if (timeFilter.includes('qdr:w')) {
+  if (safeTime.includes('qdr:w')) {
     validTimeParam = 'qdr:w';
   }
 

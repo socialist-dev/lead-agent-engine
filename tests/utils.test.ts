@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectPlatform, cleanPhoneNumber, mapConcurrent } from '../src/utils';
+import { detectPlatform, cleanPhoneNumber, cleanStringField, mapConcurrent } from '../src/utils';
 
 describe('Utils', () => {
   it('detects platforms accurately from URLs', () => {
@@ -13,7 +13,17 @@ describe('Utils', () => {
   it('cleans phone numbers and handles fallbacks correctly', () => {
     expect(cleanPhoneNumber('0981234567')).toBe('0981234567');
     expect(cleanPhoneNumber('https://facebook.com/post')).toBe('Chưa có SĐT (Inbox qua link bài)');
+    expect(cleanPhoneNumber('https://threads.net/@user/post/1')).toBe('Chưa có SĐT (Inbox qua link bài)');
+    expect(cleanPhoneNumber('N/A')).toBe('Chưa có SĐT (Inbox qua link bài)');
+    expect(cleanPhoneNumber('null')).toBe('Chưa có SĐT (Inbox qua link bài)');
     expect(cleanPhoneNumber('')).toBe('Chưa có SĐT (Inbox qua link bài)');
+  });
+
+  it('cleans string fields with fallbacks', () => {
+    expect(cleanStringField('Tài chính 3 tỷ', 'Theo thỏa thuận')).toBe('Tài chính 3 tỷ');
+    expect(cleanStringField('', 'Theo thỏa thuận')).toBe('Theo thỏa thuận');
+    expect(cleanStringField('N/A', 'Theo thỏa thuận')).toBe('Theo thỏa thuận');
+    expect(cleanStringField(null, 'Theo thỏa thuận')).toBe('Theo thỏa thuận');
   });
 
   it('mapConcurrent executes items in parallel with concurrency limit', async () => {
@@ -26,3 +36,4 @@ describe('Utils', () => {
     expect(results.map(r => r.status === 'fulfilled' ? r.value : null)).toEqual([2, 4, 6, 8, 10]);
   });
 });
+

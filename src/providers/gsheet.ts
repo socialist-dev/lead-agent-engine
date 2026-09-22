@@ -19,8 +19,21 @@ export async function fetchActiveClientsFromAdmin(
       throw new Error(`HTTP ${res.status}: ${errText.slice(0, 100)}`);
     }
 
-    const clients = (await res.json()) as ActiveClientFromAdmin[];
-    return clients;
+    const rawData = await res.json();
+    const rawClients = Array.isArray(rawData) ? rawData : (rawData as any)?.clients || [];
+    if (!Array.isArray(rawClients)) return [];
+
+    const activeClients: ActiveClientFromAdmin[] = rawClients
+      .map((c: any) => ({
+        name: String(c.name || c.clientName || c.client || 'Khách hàng').trim(),
+        spreadsheetId: String(c.spreadsheetId || c.spreadsheet_id || c.sheetId || '').trim(),
+        nicheDefinition: String(c.nicheDefinition || c.niche || c.nicheKey || '').trim(),
+        sku: String(c.sku || c.SKU || 'LEAD-PRO-01M').trim(),
+        timeFilter: String(c.timeFilter || c.time_filter || c.mocCao || 'qdr:d').trim()
+      }))
+      .filter(c => c.spreadsheetId.length > 0 && c.nicheDefinition.length > 0);
+
+    return activeClients;
   } catch (err: any) {
     logger.error(`❌ Lỗi kết nối Sheet Admin: ${err.message}`);
     return [];
@@ -32,14 +45,15 @@ export async function exportToClientSheet(
   items: ExtractedItem[],
   webhookUrl: string
 ): Promise<boolean> {
-  if (!webhookUrl || items.length === 0 || !spreadsheetId) return false;
+  const cleanSheetId = (spreadsheetId || '').trim();
+  if (!webhookUrl || items.length === 0 || !cleanSheetId) return false;
 
   try {
     const res = await httpFetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        spreadsheetId: spreadsheetId,
+        spreadsheetId: cleanSheetId,
         jobs: items
       }),
       timeoutMs: 30000,
@@ -47,10 +61,11 @@ export async function exportToClientSheet(
     });
 
     const result = await res.text();
-    logger.info(`📊 [Google Sheet] Đã bơm ${items.length} lead vào Sheet [${spreadsheetId}]: ${result.slice(0, 100)}`);
+    logger.info(`📊 [Google Sheet] Đã bơm ${items.length} lead vào Sheet [${cleanSheetId}]: ${result.slice(0, 100)}`);
     return true;
   } catch (err: any) {
-    logger.error(`[Google Sheet] Lỗi xuất dữ liệu [${spreadsheetId}]: ${err.message}`);
+    logger.error(`[Google Sheet] Lỗi xuất dữ liệu [${cleanSheetId}]: ${err.message}`);
     return false;
   }
 }
+

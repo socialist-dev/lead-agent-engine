@@ -1,6 +1,6 @@
 import { ExtractedItem, ActiveClientFromAdmin, RawScrapedPost } from '../types';
 import { getTimeFilterRule } from '../config';
-import { formatScanTimeVN, cleanPhoneNumber } from '../utils';
+import { formatScanTimeVN, cleanPhoneNumber, cleanStringField } from '../utils';
 import { httpFetch } from '../infra/http-client';
 import { geminiRateLimiter } from '../infra/rate-limiter';
 import { logger } from '../infra/logger';
@@ -67,6 +67,32 @@ export async function batchEvaluateContent(
 ): Promise<ExtractedItem[]> {
   if (posts.length === 0) return [];
 
+  // Split posts into chunks of 15 max to avoid hitting Gemini response token limits or producing truncated JSON
+  const CHUNK_SIZE = 15;
+  const chunks: RawScrapedPost[][] = [];
+  for (let i = 0; i < posts.length; i += CHUNK_SIZE) {
+    chunks.push(posts.slice(i, i + CHUNK_SIZE));
+  }
+
+  const allApprovedLeads: ExtractedItem[] = [];
+
+  for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
+    const chunkPosts = chunks[chunkIdx];
+    const chunkItems = await evaluatePostChunk(chunkPosts, client, geminiKey, model, chunkIdx + 1, chunks.length);
+    allApprovedLeads.push(...chunkItems);
+  }
+
+  return allApprovedLeads;
+}
+
+async function evaluatePostChunk(
+  posts: RawScrapedPost[],
+  client: ActiveClientFromAdmin,
+  geminiKey: string,
+  model: string,
+  chunkNum: number,
+  totalChunks: number
+): Promise<ExtractedItem[]> {
   await geminiRateLimiter.acquire();
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
 
@@ -93,29 +119,33 @@ ${post.rawContent.slice(0, 1500)}
     .join('\n\n');
 
   const prompt = `
-Bạn là chuyên gia phân tích và bóc tách dữ liệu Lead cho khách hàng: "${client.nicheDefinition}".
+Bạn là chuyên gia phân tích và bóc tách dữ liệu Lead cho khách hàng ngách: "${client.nicheDefinition}".
 HÔM NAY LÀ NGÀY: ${todayVN} (Giờ Việt Nam).
 
-Dưới đây là danh sách ${posts.length} bài viết cào được:
+Dưới đây là danh sách ${posts.length} bài viết cào được (Lượt ${chunkNum}/${totalChunks}):
 === DANH SÁCH BÀI VIẾT ===
 ${formattedPostsText}
 ==========================
 
-QUY TẮC BẮT BUỘC ĐỂ ĐIỀN ĐẦY ĐỦ 100% DỮ LIỆU VÀO CÁC CỘT (TUYỆT ĐỐI KHÔNG ĐỂ TRỐNG):
-1. url: BẮT BUỘC copy chính xác 100% đường link URL_GỐC của bài viết tương ứng.
-2. platform: Nền tảng (Threads, Facebook, TikTok, X, Web...).
+QUY TẮC THẨM ĐỊNH LỌC LEAD:
+1. TIÊU CHÍ DUYỆT: Chỉ duyệt bài viết/bình luận của NGƯỜI CẦN MUA / THUÊ / CẦN TƯ VẤN / TÌM DỊCH VỤ thật sự phù hợp với: "${client.nicheDefinition}".
+2. TIÊU CHÍ LOẠI BỎ: Loại bỏ hoàn toàn người bán, môi giới, cò đất, tuyển dụng, bài chào mời dịch vụ, quảng cáo spam.
+
+QUY TẮC BẮT BUỘC ĐỂ ĐIỀN ĐẦY ĐỦ 100% DỮ LIỆU VÀO TẤT CẢ CÁC CỘT (TUYỆT ĐỐI KHÔNG ĐỂ TRỐNG HOẶC N/A):
+1. url: Copy chính xác 100% đường link URL_GỐC của bài viết tương ứng.
+2. platform: Nền tảng (Threads, Facebook, TikTok, X, Voz, Web...).
 3. postedAgo (Cột C): Thời gian đăng bằng TIẾNG VIỆT (VD: "Vừa xong", "2 giờ trước", "1 ngày trước"). Không dùng tiếng Anh hay "N/A".
-4. categoryTag (Cột D): Thẻ nhu cầu ngắn gọn (VD: "Tư vấn mở tài khoản", "Mua chung cư 2PN").
-5. scoreOrPriority (Cột E): Điểm tiềm năng ngắn gọn: "5 ⭐", "4 ⭐", "3 ⭐".
-6. title (Cột F): Tóm tắt tiêu đề nhu cầu của người đăng (TUYỆT ĐỐI KHÔNG ĐỂ TRỐNG).
-7. contentOrBrief (Cột G): Tóm tắt chi tiết nội dung, câu hỏi, yêu cầu của bài viết (TUYỆT ĐỐI KHÔNG ĐỂ TRỐNG).
-8. extraField1 (Cột H): Ngân sách hoặc nhu cầu cụ thể (VD: "Mở tài khoản sàn uy tín", "Tài chính 3 tỷ").
-9. extraField2 (Cột I): SĐT hoặc Zalo nếu có (VD: "0981234567"). Nếu bài viết KHÔNG CÓ SĐT, BẮT BUỘC ghi là: "Chưa có SĐT (Inbox qua link bài)". TUYỆT ĐỐI KHÔNG DÁN LINK URL VÀO ĐÂY!
+4. categoryTag (Cột D): Thẻ nhu cầu ngắn gọn (VD: "[Tư vấn mở tài khoản]", "[Mua chung cư 2PN]").
+5. scoreOrPriority (Cột E): Điểm tiềm năng ngắn gọn (VD: "5 ⭐", "4 ⭐", "3 ⭐").
+6. title (Cột F): Tóm tắt ngắn tiêu đề nhu cầu của người đăng (TUYỆT ĐỐI KHÔNG ĐỂ TRỐNG).
+7. contentOrBrief (Cột G): Tóm tắt chi tiết nội dung, câu hỏi, yêu cầu bài viết (TUYỆT ĐỐI KHÔNG ĐỂ TRỐNG).
+8. extraField1 (Cột H): Chi tiết nhu cầu hoặc ngân sách cụ thể phù hợp ngách "${client.nicheDefinition}" (VD: "Tài chính 3 tỷ", "Cần mở tài khoản gấp", "Thiết kế căn 70m2"). TUYỆT ĐỐI KHÔNG ĐỂ TRỐNG!
+9. extraField2 (Cột I): SĐT hoặc Zalo nếu bài viết có đề cập (VD: "0981234567"). Nếu bài viết KHÔNG CÓ SĐT, BẮT BUỘC GHI LÀ: "Chưa có SĐT (Inbox qua link bài)". TUYỆT ĐỐI KHÔNG DÁN LINK URL VÀO ĐÂY!
 
 QUY TẮC THỜI GIAN:
 ${timeFilterRule}
 
-CHỈ TRẢ VỀ MẢNG JSON CÁC BÀI ĐẠT CHUẨN CÓ NHU CẦU THẬT SỰ.
+CHỈ TRẢ VỀ MẢNG JSON CÁC BÀI ĐẠT CHUẨN.
 `;
 
   try {
@@ -161,7 +191,7 @@ CHỈ TRẢ VỀ MẢNG JSON CÁC BÀI ĐẠT CHUẨN CÓ NHU CẦU THẬT SỰ.
     });
 
     if (!response.ok) {
-      logger.error(`[Gemini Batch] HTTP Error ${response.status}`);
+      logger.error(`[Gemini Batch ${chunkNum}/${totalChunks}] HTTP Error ${response.status}`);
       return [];
     }
 
@@ -170,13 +200,28 @@ CHỈ TRẢ VỀ MẢNG JSON CÁC BÀI ĐẠT CHUẨN CÓ NHU CẦU THẬT SỰ.
     if (!jsonText) return [];
 
     jsonText = jsonText.replace(/```json/g, '').replace(/```/g, '').trim();
-    const approvedItems = JSON.parse(jsonText) as any[];
-    const validItems: ExtractedItem[] = [];
 
+    let approvedItems: any[] = [];
+    try {
+      approvedItems = JSON.parse(jsonText);
+    } catch {
+      const match = jsonText.match(/\[\s*\{[\s\S]*\}\s*\]/);
+      if (match) {
+        try {
+          approvedItems = JSON.parse(match[0]);
+        } catch {
+          logger.warn(`[Gemini Batch ${chunkNum}/${totalChunks}] Lỗi parse JSON array fallback`);
+        }
+      }
+    }
+
+    if (!Array.isArray(approvedItems)) return [];
+
+    const validItems: ExtractedItem[] = [];
     const scanTimeFormatted = formatScanTimeVN();
 
     for (const item of approvedItems) {
-      if (item.url) {
+      if (item && item.url) {
         const cleanContact = cleanPhoneNumber(item.extraField2);
 
         let cleanTime = String(item.postedAgo || 'Mới đăng gần đây').trim();
@@ -188,22 +233,23 @@ CHỈ TRẢ VỀ MẢNG JSON CÁC BÀI ĐẠT CHUẨN CÓ NHU CẦU THẬT SỰ.
 
         validItems.push({
           scanTime: scanTimeFormatted,
-          platform: item.platform || 'Mạng xã hội',
-          postedAgo: cleanTime,
-          categoryTag: item.categoryTag || '[Lead Tiềm Năng]',
-          scoreOrPriority: item.scoreOrPriority || '5 ⭐',
-          title: item.title || 'Nhu cầu khách hàng',
-          contentOrBrief: item.contentOrBrief || 'Xem chi tiết tại link bài gốc',
-          extraField1: item.extraField1 || 'Theo thỏa thuận',
+          platform: cleanStringField(item.platform, 'Mạng xã hội'),
+          postedAgo: cleanStringField(cleanTime, 'Mới đăng gần đây'),
+          categoryTag: cleanStringField(item.categoryTag, '[Lead Tiềm Năng]'),
+          scoreOrPriority: cleanStringField(item.scoreOrPriority, '5 ⭐'),
+          title: cleanStringField(item.title, 'Nhu cầu khách hàng'),
+          contentOrBrief: cleanStringField(item.contentOrBrief, 'Xem chi tiết tại link bài gốc'),
+          extraField1: cleanStringField(item.extraField1, 'Chi tiết theo nhu cầu (Xem bài gốc)'),
           extraField2: cleanContact,
-          url: item.url
+          url: String(item.url).trim()
         });
       }
     }
 
     return validItems;
   } catch (err: any) {
-    logger.error(`[Gemini Batch] Lỗi: ${err.message}`);
+    logger.error(`[Gemini Batch ${chunkNum}/${totalChunks}] Lỗi: ${err.message}`);
     return [];
   }
 }
+
