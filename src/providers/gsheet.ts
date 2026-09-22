@@ -61,6 +61,10 @@ export async function exportToClientSheet(
     });
 
     const result = await res.text();
+    if (result.includes('<!DOCTYPE') || result.includes('<html')) {
+      logger.error(`❌ [Google Sheet] Webhook trả về HTML lỗi cho Sheet [${cleanSheetId}]. Vui lòng kiểm tra lại quyền truy cập File Sheet hoặc Webhook!`);
+      return false;
+    }
     logger.info(`📊 [Google Sheet] Đã bơm ${items.length} lead vào Sheet [${cleanSheetId}]: ${result.slice(0, 100)}`);
     return true;
   } catch (err: any) {

@@ -231,18 +231,45 @@ CHỈ TRẢ VỀ MẢNG JSON CÁC BÀI ĐẠT CHUẨN.
           .replace(/mins? ago/gi, 'phút trước')
           .replace(/N\/A/gi, 'Mới đăng gần đây');
 
+        const scanTimeVal = scanTimeFormatted;
+        const platformVal = cleanStringField(item.platform, 'Facebook');
+        const postedAgoVal = cleanStringField(cleanTime, 'Mới đăng gần đây');
+        const tagVal = cleanStringField(item.categoryTag, '[Lead Tiềm Năng]');
+        const scoreVal = cleanStringField(item.scoreOrPriority, '5 ⭐');
+        const titleVal = cleanStringField(item.title, 'Nhu cầu khách hàng');
+        const contentVal = cleanStringField(item.contentOrBrief, 'Xem chi tiết tại link bài gốc');
+        const extra1Val = cleanStringField(item.extraField1, 'Chi tiết theo nhu cầu (Xem bài gốc)');
+        const extra2Val = cleanContact;
+        const urlVal = String(item.url || '').trim();
+
         validItems.push({
-          scanTime: scanTimeFormatted,
-          platform: cleanStringField(item.platform, 'Mạng xã hội'),
-          postedAgo: cleanStringField(cleanTime, 'Mới đăng gần đây'),
-          categoryTag: cleanStringField(item.categoryTag, '[Lead Tiềm Năng]'),
-          scoreOrPriority: cleanStringField(item.scoreOrPriority, '5 ⭐'),
-          title: cleanStringField(item.title, 'Nhu cầu khách hàng'),
-          contentOrBrief: cleanStringField(item.contentOrBrief, 'Xem chi tiết tại link bài gốc'),
-          extraField1: cleanStringField(item.extraField1, 'Chi tiết theo nhu cầu (Xem bài gốc)'),
-          extraField2: cleanContact,
-          url: String(item.url).trim()
+          scanTime: scanTimeVal,
+          date: scanTimeVal,
+          platform: platformVal,
+          postedAgo: postedAgoVal,
+          time: postedAgoVal,
+          categoryTag: tagVal,
+          tag: tagVal,
+          category: tagVal,
+          scoreOrPriority: scoreVal,
+          score: scoreVal,
+          priority: scoreVal,
+          title: titleVal,
+          summary: titleVal,
+          contentOrBrief: contentVal,
+          content: contentVal,
+          brief: contentVal,
+          description: contentVal,
+          extraField1: extra1Val,
+          extra1: extra1Val,
+          extraField2: extra2Val,
+          extra2: extra2Val,
+          phone: extra2Val,
+          contact: extra2Val,
+          url: urlVal,
+          link: urlVal
         });
+
       }
     }
 

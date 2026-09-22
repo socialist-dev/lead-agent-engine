@@ -9,7 +9,24 @@ export interface ExtractedItem {
   extraField1: string;
   extraField2: string;
   url: string;
+  // Aliases for compatibility across Webhook variations
+  date?: string;
+  time?: string;
+  tag?: string;
+  category?: string;
+  score?: string;
+  priority?: string;
+  summary?: string;
+  content?: string;
+  brief?: string;
+  description?: string;
+  extra1?: string;
+  extra2?: string;
+  phone?: string;
+  contact?: string;
+  link?: string;
 }
+
 
 export interface ActiveClientFromAdmin {
   name: string;
