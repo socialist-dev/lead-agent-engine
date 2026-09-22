@@ -4,7 +4,7 @@ import { RawScrapedPost } from './jina';
 export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // =========================================================================
-// 🌟 1. HÀM AI TẠO TRUY VẤN TỰ NHIÊN & DORKING LINH HOẠT (KHÔNG BÓP NGHẸT TỪ KHÓA)
+// 🌟 1. HÀM AI TẠO TRUY VẤN TỰ NHIÊN & DORKING LINH HOẠT
 // =========================================================================
 export async function generateDorksFromNiche(nicheString: string, geminiKey: string): Promise<string[]> {
   const MODEL = 'gemini-3.1-flash-lite';
@@ -14,19 +14,16 @@ export async function generateDorksFromNiche(nicheString: string, geminiKey: str
 Bạn là chuyên gia săn Lead thực chiến trên mạng xã hội Việt Nam (Threads, Facebook, TikTok, Diễn đàn).
 Khách hàng muốn tìm kiếm khách hàng có nhu cầu: "${nicheString}"
 
-Nhiệm vụ: Hãy tạo ra đúng 4 câu tìm kiếm Google/Dorking tự nhiên, đơn giản và hiệu quả nhất để gom được NHIỀU BÀI VIẾT NHẤT.
+Nhiệm vụ: Tạo ra đúng 4 câu tìm kiếm Google/Dorking tự nhiên, đơn giản và hiệu quả nhất để gom được NHIỀU BÀI VIẾT NHẤT.
 
-QUY TẮC BẮT BUỘC ĐỂ KHÔNG BỊ 0 KẾT QUẢ:
-1. KHÔNG dùng ngoặc đơn lồng nhau phức tạp kiểu: (A OR B) (C OR D) (E OR F).
-2. DÙNG CÂU TỪ TỰ NHIÊN NGƯỜI VIỆT HAY ĐĂNG:
-   - Thay vì ép ngoặc, hãy viết: tư vấn mua xe mercedes OR bmw OR audi sài gòn
-   - Thay vì ép ngoặc, hãy viết: cần mua căn hộ vinhomes đà nẵng
-   - Thay vì ép ngoặc, hãy viết: nên mở tài khoản chứng khoán sàn nào uy tín
-3. MẪU 4 CÂU TRẢ VỀ:
-   - Câu 1 (Tìm nhu cầu rộng): [Hành động: cần mua/tư vấn/tìm] + [Tên sản phẩm/dịch vụ] + [Địa điểm nếu có]
-   - Câu 2 (Văn nói hỏi kinh nghiệm): nên mua/chọn [Sản phẩm] nào OR xin review [Sản phẩm]
-   - Câu 3 (Mạng xã hội Threads/Facebook): site:threads.net OR site:facebook.com/groups [Sản phẩm ngắn gọn]
-   - Câu 4 (Diễn đàn/Video): site:voz.vn OR site:tiktok.com OR site:otofun.net [Sản phẩm]
+QUY TẮC BẮT BUỘC:
+1. KHÔNG dùng ngoặc đơn lồng nhau phức tạp (A OR B) (C OR D).
+2. Dùng câu từ tự nhiên người Việt hay đăng bài tìm kiếm/hỏi han.
+3. CẤU TRÚC 4 CÂU TRẢ VỀ:
+   - Câu 1: [Hành động: cần tìm/tư vấn/muốn] + [Sản phẩm/Dịch vụ] + [Địa điểm nếu có]
+   - Câu 2: nên mua/chọn [Sản phẩm] nào OR xin review [Sản phẩm]
+   - Câu 3: (site:threads.net OR site:facebook.com/groups) [Sản phẩm ngắn gọn]
+   - Câu 4: (site:voz.vn OR site:tiktok.com OR site:otofun.net) [Sản phẩm]
 
 Trả về đúng mảng JSON gồm 4 chuỗi:
 ["câu 1", "câu 2", "câu 3", "câu 4"]
@@ -39,9 +36,7 @@ Trả về đúng mảng JSON gồm 4 chuỗi:
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseMimeType: 'application/json'
-        }
+        generationConfig: { responseMimeType: 'application/json' }
       })
     });
 
@@ -52,14 +47,9 @@ Trả về đúng mảng JSON gồm 4 chuỗi:
     text = text.replace(/```json/g, "").replace(/```/g, "").trim();
     const dorks = JSON.parse(text) as string[];
 
-    if (Array.isArray(dorks) && dorks.length > 0) {
-      return dorks;
-    }
+    if (Array.isArray(dorks) && dorks.length > 0) return dorks;
     throw new Error("Invalid array");
   } catch (err: any) {
-    console.warn(`[Gemini Dork Gen] Tự động tạo dork thông minh cho ngách: "${nicheString}"`);
-    
-    // Tách các từ khóa chính một cách thông minh
     const clean = nicheString.replace(/tìm lead|nhu cầu|khách hàng/gi, "").replace(/\|/g, " ").trim();
     return [
       `tư vấn ${clean}`,
@@ -71,7 +61,7 @@ Trả về đúng mảng JSON gồm 4 chuỗi:
 }
 
 // =========================================================================
-// 🌟 2. HÀM AI THẨM ĐỊNH HÀNG LOẠT (SINGLE BATCH)
+// 🌟 2. HÀM AI THẨM ĐỊNH HÀNG LOẠT & CHUẨN HÓA DỮ LIỆU CỘT
 // =========================================================================
 export async function batchEvaluateContent(
   posts: RawScrapedPost[],
@@ -91,7 +81,6 @@ export async function batchEvaluateContent(
     day: '2-digit'
   });
 
-  // Phân tầng thời gian
   let timeFilterRule = '';
   const isHighTier = client.sku.includes('PRO') || client.sku.includes('TRI');
 
@@ -99,7 +88,6 @@ export async function batchEvaluateContent(
     timeFilterRule = `
     🔥 CHẾ ĐỘ: [GÓI CAO CẤP REAL-TIME].
     - DUYỆT CÁC BÀI ĐĂNG MỚI TRONG VÒNG 24 GIỜ QUA HOẶC GẦN ĐÂY.
-    - Bóc tách chính xác số điện thoại/Zalo, ngân sách và nhu cầu của người mua.
     `;
   } else {
     timeFilterRule = `
@@ -135,10 +123,11 @@ QUY TẮC THẨM ĐỊNH CHO KHÁCH HÀNG [${client.name}]:
 3. QUY TẮC THỜI GIAN:
 ${timeFilterRule}
 
-TIÊU CHÍ TRẢ VỀ:
-- scoreOrPriority: Đánh giá độ nét từ 1-5 ⭐ kèm lý do ngắn.
-- extraField1: Ngân sách / Nhu cầu chi tiết.
-- extraField2: SĐT / Zalo / Link liên hệ của người cần mua.
+QUY TẮC ĐỊNH DẠNG CỘT BẮT BUỘC (ĐỂ KHÔNG BỊ LỘN XỘN TRÊN EXCEL):
+- postedAgo (Thời gian đăng): BẮT BUỘC dùng tiếng Việt có dấu dạng: "Vừa xong", "X giờ trước" (VD: "2 giờ trước"), "X ngày trước" (VD: "1 ngày trước", "3 ngày trước"). TUYỆT ĐỐI KHÔNG dùng tiếng Anh (1 day ago, 5 days ago, Feb 24...) hay chữ "N/A". Nếu không rõ giờ thì ghi "Mới đăng gần đây".
+- scoreOrPriority (Độ tiềm năng): Định dạng chuẩn ngắn gọn: "5/5 ⭐ (Nhu cầu gấp)", "4/5 ⭐ (Cần tư vấn)", "3/5 ⭐ (Hỏi tham khảo)".
+- extraField1 (Ngân sách / Nhu cầu): Tóm tắt tầm giá hoặc nhu cầu cụ thể (VD: "Tài chính 3 tỷ", "Mở tài khoản sàn uy tín").
+- extraField2 (SĐT / Liên hệ): CHỈ LẤY SỐ ĐIỆN THOẠI HOẶC ZALO (VD: "0981234567"). Nếu bài viết KHÔNG CÓ số điện thoại, BẮT BUỘC GHI LÀ "Chưa có SĐT (Inbox qua link bài)". TUYỆT ĐỐI KHÔNG COPY LẠI ĐƯỜNG LINK URL VÀO ĐÂY!
 `;
 
   try {
@@ -184,16 +173,30 @@ TIÊU CHÍ TRẢ VỀ:
 
     for (const item of approvedItems) {
       if (item.url) {
+        // Hậu xử lý bằng Code: Chống tuyệt đối việc nhét URL vào cột SĐT
+        let cleanContact = String(item.extraField2 || "").trim();
+        if (cleanContact.includes("http://") || cleanContact.includes("https://") || cleanContact.includes("facebook.com")) {
+          cleanContact = "Chưa có SĐT (Inbox qua link bài)";
+        }
+
+        // Hậu xử lý Thời gian tiếng Việt
+        let cleanTime = String(item.postedAgo || "Mới đăng gần đây").trim();
+        cleanTime = cleanTime
+          .replace(/days? ago/gi, "ngày trước")
+          .replace(/hours? ago/gi, "giờ trước")
+          .replace(/mins? ago/gi, "phút trước")
+          .replace(/N\/A/gi, "Mới đăng gần đây");
+
         validItems.push({
           scanTime: new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }),
           platform: item.platform,
-          postedAgo: item.postedAgo,
-          categoryTag: item.categoryTag || '[Lead Tiềm Năng]',
+          postedAgo: cleanTime,
+          categoryTag: item.categoryTag || '[Lead Nhu Cầu]',
           scoreOrPriority: item.scoreOrPriority,
           title: item.title,
           contentOrBrief: item.contentOrBrief,
           extraField1: item.extraField1,
-          extraField2: item.extraField2,
+          extraField2: cleanContact,
           url: item.url
         });
       }
