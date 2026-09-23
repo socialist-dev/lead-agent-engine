@@ -1,5 +1,6 @@
 import { ActiveClientFromAdmin, AppConfig, PipelineResult, RawScrapedPost } from './types';
 import { generateDorksFromNiche, batchEvaluateContent } from './providers/gemini';
+import { evaluateIntentBinary } from './providers/ai-intent-judge';
 import { searchSerpDirect } from './providers/serp-direct';
 import { searchJina } from './providers/jina';
 import { searchFirecrawl } from './providers/firecrawl';
@@ -64,22 +65,27 @@ export async function runClientPipeline(
   let leadsPushed = 0;
   let leadsFound = 0;
 
-  // Bước 3: Đưa toàn bộ vào Gemini thẩm định 1 lượt (Single Batch)
+  // Bước 3: AI QUY TRÌNH 2 GIAI ĐOẠN (2-Stage AI Pipeline)
   if (uniquePosts.length > 0) {
-    const approvedLeads = await batchEvaluateContent(uniquePosts, client, config.geminiKey, config.geminiModel);
-    leadsFound = approvedLeads.length;
-    logger.info(`🎯 AI duyệt được ${leadsFound}/${uniquePosts.length} lead đạt chuẩn cho [${client.name}].`);
+    // Stage 1: AI Intent Judge thẩm định ý định mua dương tính (Binary YES/NO)
+    const stage1ApprovedPosts = await evaluateIntentBinary(uniquePosts, client, config.geminiKey, config.geminiModel);
 
-    // TẦNG 4 VERIFICATION: Kiểm tra Live Status URL trước khi bơm vào Sheet
-    const verifiedLeads = [];
-    for (const lead of approvedLeads) {
-      const isLive = await verifyUrlIsLiveAndClean(lead.url);
-      if (isLive) {
-        verifiedLeads.push(lead);
-      } else {
-        logger.warn(`🚫 [Pipeline Verifier] Bỏ qua lead do link bị gỡ hoặc dính từ thô tục: "${lead.url}"`);
+    // Stage 2: AI Field Extractor chỉ bóc 10 cột JSON cho những bài vượt qua Stage 1
+    if (stage1ApprovedPosts.length > 0) {
+      const approvedLeads = await batchEvaluateContent(stage1ApprovedPosts, client, config.geminiKey, config.geminiModel);
+      leadsFound = approvedLeads.length;
+      logger.info(`🎯 AI Stage 2 bóc tách được ${leadsFound}/${stage1ApprovedPosts.length} lead đạt chuẩn cho [${client.name}].`);
+
+      // TẦNG 4 VERIFICATION: Kiểm tra Live Status URL trước khi bơm vào Sheet
+      const verifiedLeads = [];
+      for (const lead of approvedLeads) {
+        const isLive = await verifyUrlIsLiveAndClean(lead.url);
+        if (isLive) {
+          verifiedLeads.push(lead);
+        } else {
+          logger.warn(`🚫 [Pipeline Verifier] Bỏ qua lead do link bị gỡ hoặc dính từ thô tục: "${lead.url}"`);
+        }
       }
-    }
 
     // Bước 4: Bơm thẳng vào Sheet riêng của khách
     if (verifiedLeads.length > 0) {
