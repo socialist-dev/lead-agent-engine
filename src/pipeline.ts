@@ -7,7 +7,7 @@ import { fetchSearXNG } from './providers/searxng';
 import { searchJina } from './providers/jina';
 import { searchFirecrawl } from './providers/firecrawl';
 import { exportToClientSheet } from './providers/gsheet';
-import { sleep } from './utils';
+import { sleep, mapConcurrent } from './utils';
 import { logger } from './infra/logger';
 import { isToxicOrNsfw } from './infra/content-filter';
 import { verifyUrlIsLiveAndClean } from './infra/url-verifier';
