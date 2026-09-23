@@ -1,7 +1,7 @@
 import { ActiveClientFromAdmin, AppConfig, PipelineResult, RawScrapedPost } from './types';
 import { generateDorksFromNiche, batchEvaluateContent } from './providers/gemini';
 import { evaluateIntentBinary } from './providers/ai-intent-judge';
-import { searchSerpDirect } from './providers/serp-direct';
+import { searchSerpDirect, resetSerpState } from './providers/serp-direct';
 import { fetchBingSerp } from './providers/bing-direct';
 import { fetchSearXNG } from './providers/searxng';
 import { searchJina } from './providers/jina';
@@ -21,6 +21,9 @@ export async function runClientPipeline(
   const startTime = Date.now();
   const errors: string[] = [];
 
+  // Reset SERP rate limit flag for new client run
+  resetSerpState();
+
   logger.info(`\n======================================================`);
   logger.info(`KHÁCH HÀNG: [${client.name}] | GÓI: [${client.sku}]`);
   logger.info(`🎯 ĐỊNH NGHĨA NGÁCH: "${client.nicheDefinition}"`);
@@ -31,26 +34,27 @@ export async function runClientPipeline(
   const dynamicDorks = await generateDorksFromNiche(client.nicheDefinition, config.geminiKey, config.geminiModel);
   logger.info(`🤖 AI sinh ${dynamicDorks.length} câu Dorking đa dạng cho [${client.name}]: ${JSON.stringify(dynamicDorks)}`);
 
-  // Bước 2: Cào dữ liệu siêu quy mô với Đa Động Cơ Direct SERP (Google + DDG + Bing + SearXNG)
+  // Bước 2: Cào dữ liệu siêu quy mô với Waterfall Scraper Engine (Fast Early-Exit)
   const rawPosts: RawScrapedPost[] = [];
 
   for (let i = 0; i < dynamicDorks.length; i++) {
     const dork = dynamicDorks[i];
     logger.info(`🔎 [Dork ${i + 1}/${dynamicDorks.length}] [${client.name}]: "${dork}"`);
 
-    // Động cơ 1 & 2: Direct Google + DuckDuckGo SERP (Phân trang 3 trang)
-    let dorkPosts = await searchSerpDirect(dork, client.timeFilter, 3);
+    // Động cơ 1 & 2: Direct Google + DuckDuckGo SERP (Phân trang 2 trang)
+    let dorkPosts = await searchSerpDirect(dork, client.timeFilter, 2);
 
-    // Động cơ 3: Direct Bing SERP (Phân trang 2 trang)
-    const bingPosts = await fetchBingSerp(dork, 2);
-    if (bingPosts.length > 0) {
-      dorkPosts.push(...bingPosts);
-    }
+    // Chiến lược Early Exit: Nếu cào được >= 6 kết quả từ Google/DDG, không cần hit Bing/SearXNG để tiết kiệm thời gian
+    if (dorkPosts.length < 6) {
+      // Động cơ 3: Direct Bing SERP (Phân trang 1 trang)
+      const bingPosts = await fetchBingSerp(dork, 1);
+      if (bingPosts.length > 0) dorkPosts.push(...bingPosts);
 
-    // Động cơ 4: SearXNG Multi-Instance JSON API
-    const searxPosts = await fetchSearXNG(dork, 2);
-    if (searxPosts.length > 0) {
-      dorkPosts.push(...searxPosts);
+      // Động cơ 4: SearXNG Multi-Instance JSON API
+      if (dorkPosts.length < 6) {
+        const searxPosts = await fetchSearXNG(dork, 1);
+        if (searxPosts.length > 0) dorkPosts.push(...searxPosts);
+      }
     }
 
     // Tầng 2 Fallback: Jina API Fallback (nếu các động cơ 0đ trên không ra bài)

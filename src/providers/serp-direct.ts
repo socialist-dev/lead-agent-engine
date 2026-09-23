@@ -47,7 +47,17 @@ function cleanHtmlText(htmlSnippet: string): string {
     .trim();
 }
 
-async function fetchGoogleSerp(query: string, timeParam: string, maxPages = 3): Promise<RawScrapedPost[]> {
+let isGoogleRateLimited = false;
+
+export function resetSerpState() {
+  isGoogleRateLimited = false;
+}
+
+async function fetchGoogleSerp(query: string, timeParam: string, maxPages = 2): Promise<RawScrapedPost[]> {
+  if (isGoogleRateLimited) {
+    return []; // Google is currently rate-limited in this run, skip to avoid delays
+  }
+
   const posts: RawScrapedPost[] = [];
   const seenUrls = new Set<string>();
 
@@ -64,9 +74,15 @@ async function fetchGoogleSerp(query: string, timeParam: string, maxPages = 3): 
           'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
           'Cache-Control': 'no-cache'
         },
-        timeoutMs: 8000,
-        retries: 1
+        timeoutMs: 6000,
+        retries: 0 // Do not retry on 429 immediately to avoid hitting timeout
       });
+
+      if (res.status === 429) {
+        logger.warn(`⚠️ [Google SERP] Rate limit 429. Skipping Google for remaining dorks in this run.`);
+        isGoogleRateLimited = true;
+        break;
+      }
 
       if (!res.ok) break;
 
@@ -102,11 +118,10 @@ async function fetchGoogleSerp(query: string, timeParam: string, maxPages = 3): 
         });
       }
 
-      if (pageNewItems === 0) break; // Không còn kết quả mới, dừng phân trang sớm
+      if (pageNewItems === 0) break;
 
-      // Nghỉ ngắn giữa các trang tránh bị Google rate-limit
       if (page < maxPages - 1) {
-        await new Promise(r => setTimeout(r, 400 + Math.random() * 400));
+        await new Promise(r => setTimeout(r, 300 + Math.random() * 300));
       }
     } catch (err: any) {
       logger.warn(`[Google SERP Direct Page ${page + 1}] Lỗi: ${err.message}`);

@@ -5,17 +5,14 @@ import { logger } from '../infra/logger';
 
 const SEARXNG_INSTANCES = [
   'https://searx.be',
-  'https://searxng.site',
-  'https://searx.priv.at',
-  'https://searx.online',
-  'https://search.bus-hit.me'
+  'https://searx.space',
+  'https://searx.priv.at'
 ];
 
-export async function fetchSearXNG(query: string, maxPages = 2): Promise<RawScrapedPost[]> {
+export async function fetchSearXNG(query: string, maxPages = 1): Promise<RawScrapedPost[]> {
   const posts: RawScrapedPost[] = [];
   const seenUrls = new Set<string>();
 
-  // Pick 2 random instances to query
   const shuffledInstances = [...SEARXNG_INSTANCES].sort(() => Math.random() - 0.5);
 
   for (const instance of shuffledInstances) {
@@ -30,11 +27,14 @@ export async function fetchSearXNG(query: string, maxPages = 2): Promise<RawScra
             'Accept': 'application/json',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
           },
-          timeoutMs: 6000,
-          retries: 1
+          timeoutMs: 3500,
+          retries: 0
         });
 
         if (!res.ok) break;
+
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) break;
 
         const data = (await res.json()) as any;
         const results = data.results;
@@ -63,14 +63,13 @@ export async function fetchSearXNG(query: string, maxPages = 2): Promise<RawScra
         if (pageNewItems > 0) success = true;
         else break;
       } catch (err: any) {
-        logger.warn(`[SearXNG Instance ${instance}] Lỗi: ${err.message}`);
         break;
       }
     }
 
     if (success && posts.length > 0) {
-      logger.info(`🌀 [SearXNG Engine] Tìm thấy ${posts.length} kết quả qua ${instance} (0đ API)`);
-      break; // Found working instance, no need to try next
+      logger.info(`🌀 [SearXNG Engine] Tìm thấy ${posts.length} kết quả qua ${instance}`);
+      break;
     }
   }
 
