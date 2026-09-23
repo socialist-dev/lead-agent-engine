@@ -55,7 +55,7 @@ export function resetSerpState() {
 
 async function fetchGoogleSerp(query: string, timeParam: string, maxPages = 2): Promise<RawScrapedPost[]> {
   if (isGoogleRateLimited) {
-    return []; // Google is currently rate-limited in this run, skip to avoid delays
+    return [];
   }
 
   const posts: RawScrapedPost[] = [];
@@ -75,7 +75,7 @@ async function fetchGoogleSerp(query: string, timeParam: string, maxPages = 2): 
           'Cache-Control': 'no-cache'
         },
         timeoutMs: 6000,
-        retries: 0 // Do not retry on 429 immediately to avoid hitting timeout
+        retries: 0
       });
 
       if (res.status === 429) {
@@ -87,35 +87,36 @@ async function fetchGoogleSerp(query: string, timeParam: string, maxPages = 2): 
       if (!res.ok) break;
 
       const html = await res.text();
-      const chunks = html.split(/href="\/url\?q=/g);
       let pageNewItems = 0;
 
-      for (let i = 1; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        const endUrlIdx = chunk.indexOf('&amp;');
-        if (endUrlIdx === -1) continue;
-
-        const rawUrl = chunk.slice(0, endUrlIdx);
-        let cleanUrl = decodeURIComponent(rawUrl);
-
-        if (
-          cleanUrl.includes('google.com') ||
-          cleanUrl.includes('youtube.com/watch') ||
-          cleanUrl.endsWith('.net/')
-        ) {
-          continue;
+      // Trích xuất link dạng /url?q=
+      const urlQMatches = html.matchAll(/href="\/url\?q=(https?%3A%2F%2F[^&"]+|https?:\/\/[^&"]+)/gi);
+      for (const match of urlQMatches) {
+        const cleanUrl = decodeURIComponent(match[1]);
+        if (isValidSerpUrl(cleanUrl, seenUrls)) {
+          seenUrls.add(cleanUrl);
+          pageNewItems++;
+          posts.push({
+            platform: detectPlatform(cleanUrl),
+            url: cleanUrl,
+            rawContent: `[Google Result Trang ${page + 1}]\nURL: ${cleanUrl}\nTrích đoạn nội dung: Kết quả tìm kiếm từ Google`
+          });
         }
-        if (seenUrls.has(cleanUrl)) continue;
-        seenUrls.add(cleanUrl);
-        pageNewItems++;
+      }
 
-        const snippetText = cleanHtmlText(chunk.slice(0, 600));
-
-        posts.push({
-          platform: detectPlatform(cleanUrl),
-          url: cleanUrl,
-          rawContent: `[Google Result Trang ${page + 1}]\nURL: ${cleanUrl}\nTrích đoạn nội dung: ${snippetText}`
-        });
+      // Trích xuất link direct href="https://..." trong kết quả Google hiện đại
+      const directMatches = html.matchAll(/href="(https?:\/\/(?:facebook\.com|threads\.net|voz\.vn|tinhte\.vn|otofun\.net|otosaigon\.com|[^"\/]+)[^"]*)"/gi);
+      for (const match of directMatches) {
+        const cleanUrl = match[1];
+        if (isValidSerpUrl(cleanUrl, seenUrls)) {
+          seenUrls.add(cleanUrl);
+          pageNewItems++;
+          posts.push({
+            platform: detectPlatform(cleanUrl),
+            url: cleanUrl,
+            rawContent: `[Google Result Trang ${page + 1}]\nURL: ${cleanUrl}\nTrích đoạn nội dung: Kết quả tìm kiếm từ Google`
+          });
+        }
       }
 
       if (pageNewItems === 0) break;
@@ -132,21 +133,30 @@ async function fetchGoogleSerp(query: string, timeParam: string, maxPages = 2): 
   return posts;
 }
 
-async function fetchDuckDuckGoSerp(query: string, maxPages = 3): Promise<RawScrapedPost[]> {
+function isValidSerpUrl(url: string, seenUrls: Set<string>): boolean {
+  if (!url || seenUrls.has(url)) return false;
+  if (
+    url.includes('google.com') ||
+    url.includes('google.com.vn') ||
+    url.includes('youtube.com/watch') ||
+    url.includes('accounts.google') ||
+    url.includes('support.google') ||
+    url.endsWith('.net/') ||
+    url.endsWith('.com/')
+  ) {
+    return false;
+  }
+  return true;
+}
+
+async function fetchDuckDuckGoSerp(query: string, maxPages = 2): Promise<RawScrapedPost[]> {
   const posts: RawScrapedPost[] = [];
   const seenUrls = new Set<string>();
-  let nextParams = '';
 
   for (let page = 0; page < maxPages; page++) {
     const randomUA = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
     const url = 'https://html.duckduckgo.com/html/';
-
-    let bodyStr = `q=${encodeURIComponent(query)}`;
-    if (page > 0 && nextParams) {
-      bodyStr += `&${nextParams}`;
-    } else if (page > 0) {
-      bodyStr += `&s=${page * 30}&dc=${page * 30 + 1}`;
-    }
+    const bodyStr = `q=${encodeURIComponent(query)}${page > 0 ? `&s=${page * 30}&dc=${page * 30 + 1}` : ''}`;
 
     try {
       const res = await httpFetch(url, {
@@ -157,51 +167,39 @@ async function fetchDuckDuckGoSerp(query: string, maxPages = 3): Promise<RawScra
           'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7'
         },
         body: bodyStr,
-        timeoutMs: 8000,
-        retries: 1
+        timeoutMs: 6000,
+        retries: 0
       });
 
       if (!res.ok) break;
 
       const html = await res.text();
-      const resultBlocks = html.split(/<div[^>]+class="[^"]*result[^"]*body-result/gi);
       let pageNewItems = 0;
 
-      for (let i = 1; i < resultBlocks.length; i++) {
-        const block = resultBlocks[i];
-        const urlMatch = block.match(/href="\/\/duckduckgo\.com\/l\/\?uddg=(https?%3A%2F%2F[^&"]+)"/i);
-        if (!urlMatch) continue;
-
-        const targetUrl = decodeURIComponent(urlMatch[1]);
-        if (targetUrl.includes('duckduckgo.com') || targetUrl.endsWith('.net/')) continue;
-        if (seenUrls.has(targetUrl)) continue;
-        seenUrls.add(targetUrl);
-        pageNewItems++;
-
-        const snippetMatch = block.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/i);
-        const snippetText = snippetMatch ? cleanHtmlText(snippetMatch[1]) : cleanHtmlText(block.slice(0, 400));
-
-        posts.push({
-          platform: detectPlatform(targetUrl),
-          url: targetUrl,
-          rawContent: `[DuckDuckGo Result Trang ${page + 1}]\nURL: ${targetUrl}\nTrích đoạn nội dung: ${snippetText}`
-        });
-      }
-
-      // Trích xuất form hidden params cho trang kế tiếp từ HTML DDG
-      const sMatch = html.match(/name="s"\s+value="([^"]+)"/i);
-      const dcMatch = html.match(/name="dc"\s+value="([^"]+)"/i);
-      const vqdMatch = html.match(/name="vqd"\s+value="([^"]+)"/i);
-      if (sMatch && dcMatch && vqdMatch) {
-        nextParams = `s=${encodeURIComponent(sMatch[1])}&dc=${encodeURIComponent(dcMatch[1])}&vqd=${encodeURIComponent(vqdMatch[1])}`;
-      } else {
-        nextParams = '';
+      // Trích xuất tất cả uddg redirect URLs trong HTML DuckDuckGo
+      const uddgMatches = html.matchAll(/uddg=(https?%3A%2F%2F[^&"]+|https?:\/\/[^&"]+)/gi);
+      for (const match of uddgMatches) {
+        const targetUrl = decodeURIComponent(match[1]);
+        if (
+          !targetUrl.includes('duckduckgo.com') &&
+          !seenUrls.has(targetUrl) &&
+          !targetUrl.endsWith('.net/') &&
+          !targetUrl.endsWith('.com/')
+        ) {
+          seenUrls.add(targetUrl);
+          pageNewItems++;
+          posts.push({
+            platform: detectPlatform(targetUrl),
+            url: targetUrl,
+            rawContent: `[DuckDuckGo Result Trang ${page + 1}]\nURL: ${targetUrl}\nTrích đoạn: Kết quả tìm kiếm từ DuckDuckGo`
+          });
+        }
       }
 
       if (pageNewItems === 0) break;
 
       if (page < maxPages - 1) {
-        await new Promise(r => setTimeout(r, 400 + Math.random() * 400));
+        await new Promise(r => setTimeout(r, 300 + Math.random() * 300));
       }
     } catch (err: any) {
       logger.warn(`[DuckDuckGo Direct Page ${page + 1}] Lỗi: ${err.message}`);
