@@ -28,7 +28,7 @@ jobs:
         run: npm install
 
       - name: Run Lead Engine
-        timeout-minutes: 10
+        timeout-minutes: 15
         env:
           JINA_API_KEY: ${{ secrets.JINA_API_KEY }}
           FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}

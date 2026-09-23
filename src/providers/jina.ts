@@ -27,8 +27,8 @@ export async function searchJina(
         'X-Retain-Images': 'none',
         'X-With-Generated-Alt': 'false'
       },
-      timeoutMs: 12000,
-      retries: 2
+      timeoutMs: 4000,
+      retries: 0
     });
 
     if (!res.ok) return [];
