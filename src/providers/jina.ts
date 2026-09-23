@@ -22,7 +22,10 @@ export async function searchJina(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'X-Locale': 'vi-VN',
-        'X-No-Cache': 'true'
+        'X-No-Cache': 'true',
+        'X-Respond-With': 'title,url,snippet',
+        'X-Retain-Images': 'none',
+        'X-With-Generated-Alt': 'false'
       },
       timeoutMs: 12000,
       retries: 2
@@ -44,7 +47,7 @@ export async function searchJina(
         posts.push({
           platform: detectPlatform(postUrl),
           url: postUrl,
-          rawContent: section
+          rawContent: section.slice(0, 500)
         });
       }
     }

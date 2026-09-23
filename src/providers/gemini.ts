@@ -4,6 +4,7 @@ import { formatScanTimeVN, cleanPhoneNumber, cleanStringField } from '../utils';
 import { httpFetch } from '../infra/http-client';
 import { geminiRateLimiter } from '../infra/rate-limiter';
 import { logger } from '../infra/logger';
+import { isToxicOrNsfw, isLeadTimeValid } from '../infra/content-filter';
 
 export async function generateDorksFromNiche(
   nicheString: string,
@@ -130,6 +131,7 @@ ${formattedPostsText}
 QUY TẮC THẨM ĐỊNH LỌC LEAD:
 1. TIÊU CHÍ DUYỆT: Chỉ duyệt bài viết/bình luận của NGƯỜI CẦN MUA / THUÊ / CẦN TƯ VẤN / TÌM DỊCH VỤ thật sự phù hợp với: "${client.nicheDefinition}".
 2. TIÊU CHÍ LOẠI BỎ: Loại bỏ hoàn toàn người bán, môi giới, cò đất, tuyển dụng, bài chào mời dịch vụ, quảng cáo spam.
+3. TIÊU CHÍ AN TOÀN NỘI DUNG: LOẠI BỎ HOÀN TOÀN bài viết chứa từ ngữ thô tục, khiếm nhã, 18+, bình luận chửi nhau, tâm sự cá nhân phiếm, hoặc bài viết đã bị gỡ.
 
 QUY TẮC BẮT BUỘC ĐỂ ĐIỀN ĐẦY ĐỦ 100% DỮ LIỆU VÀO TẤT CẢ CÁC CỘT (TUYỆT ĐỐI KHÔNG ĐỂ TRỐNG HOẶC N/A):
 1. url: Copy chính xác 100% đường link URL_GỐC của bài viết tương ứng.
@@ -222,8 +224,6 @@ CHỈ TRẢ VỀ MẢNG JSON CÁC BÀI ĐẠT CHUẨN.
 
     for (const item of approvedItems) {
       if (item && item.url) {
-        const cleanContact = cleanPhoneNumber(item.extraField2);
-
         let cleanTime = String(item.postedAgo || 'Mới đăng gần đây').trim();
         cleanTime = cleanTime
           .replace(/days? ago/gi, 'ngày trước')
@@ -231,6 +231,24 @@ CHỈ TRẢ VỀ MẢNG JSON CÁC BÀI ĐẠT CHUẨN.
           .replace(/mins? ago/gi, 'phút trước')
           .replace(/N\/A/gi, 'Mới đăng gần đây');
 
+        // TẦNG 2: BỘ LỌC THỜI GIAN CỨNG (Chặn bài "6 tháng trước", "1 năm trước", "> 7 ngày")
+        if (!isLeadTimeValid(cleanTime, 7)) {
+          logger.warn(`🚫 [Gemini Filter] Bỏ qua bài do quá thời hạn: "${cleanTime}" (${item.url})`);
+          continue;
+        }
+
+        // TẦNG 1: BỘ LỌC TỪ NGỮ THÔ TỤC / KHIẾM NHÃ / NSFW
+        if (
+          isToxicOrNsfw(item.title) ||
+          isToxicOrNsfw(item.contentOrBrief) ||
+          isToxicOrNsfw(item.extraField1) ||
+          isToxicOrNsfw(item.url)
+        ) {
+          logger.warn(`🚫 [Gemini Filter] Bỏ qua bài chứa từ thô tục khiếm nhã (${item.url})`);
+          continue;
+        }
+
+        const cleanContact = cleanPhoneNumber(item.extraField2);
         const scanTimeVal = scanTimeFormatted;
         const platformVal = cleanStringField(item.platform, 'Facebook');
         const postedAgoVal = cleanStringField(cleanTime, 'Mới đăng gần đây');

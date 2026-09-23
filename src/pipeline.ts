@@ -1,10 +1,13 @@
 import { ActiveClientFromAdmin, AppConfig, PipelineResult, RawScrapedPost } from './types';
 import { generateDorksFromNiche, batchEvaluateContent } from './providers/gemini';
+import { searchSerpDirect } from './providers/serp-direct';
 import { searchJina } from './providers/jina';
 import { searchFirecrawl } from './providers/firecrawl';
 import { exportToClientSheet } from './providers/gsheet';
 import { sleep } from './utils';
 import { logger } from './infra/logger';
+import { isToxicOrNsfw } from './infra/content-filter';
+import { verifyUrlIsLiveAndClean } from './infra/url-verifier';
 
 export async function runClientPipeline(
   client: ActiveClientFromAdmin,
@@ -23,24 +26,33 @@ export async function runClientPipeline(
   const dynamicDorks = await generateDorksFromNiche(client.nicheDefinition, config.geminiKey, config.geminiModel);
   logger.info(`🤖 AI sinh ${dynamicDorks.length} câu Dorking cho [${client.name}]: ${JSON.stringify(dynamicDorks)}`);
 
-  // Bước 2: Cào dữ liệu qua Jina + Firecrawl dự phòng
+  // Bước 2: Cào dữ liệu với Hàng Rào Dự Phòng 3 Tầng (3-Tier Hybrid Engine)
   const rawPosts: RawScrapedPost[] = [];
   for (const dork of dynamicDorks) {
-    logger.info(`🔍 [Jina Search] [${client.name}]: ${dork}`);
-    const jinaRes = await searchJina(dork, config.jinaKey, client.timeFilter);
-    rawPosts.push(...jinaRes);
+    // Tầng 1: Cào Direct SERP (0đ API, tốc độ siêu nhanh <500ms)
+    logger.info(`🌐 [Tier 1: Direct SERP] [${client.name}]: "${dork}"`);
+    let dorkPosts = await searchSerpDirect(dork, client.timeFilter);
 
-    if (config.firecrawlKey && jinaRes.length === 0) {
-      logger.info(`🔥 [Firecrawl Fallback] [${client.name}]: "${dork}"`);
-      const fcRes = await searchFirecrawl(dork, config.firecrawlKey, client.timeFilter);
-      rawPosts.push(...fcRes);
+    // Tầng 2: Jina API Fallback (với Snippet-Only Header tiết kiệm 85% token)
+    if (dorkPosts.length === 0 && config.jinaKey) {
+      logger.info(`🔍 [Tier 2: Jina Snippet Fallback] [${client.name}]: "${dork}"`);
+      dorkPosts = await searchJina(dork, config.jinaKey, client.timeFilter);
     }
+
+    // Tầng 3: Firecrawl API Fallback (Dự phòng cuối cùng)
+    if (dorkPosts.length === 0 && config.firecrawlKey) {
+      logger.info(`🔥 [Tier 3: Firecrawl Fallback] [${client.name}]: "${dork}"`);
+      dorkPosts = await searchFirecrawl(dork, config.firecrawlKey, client.timeFilter);
+    }
+
+    rawPosts.push(...dorkPosts);
     await sleep(300);
   }
 
-  // Deduplication theo URL
-  const uniquePosts = Array.from(new Map(rawPosts.map(p => [p.url, p])).values());
-  logger.info(`📌 Gom được ${uniquePosts.length} bài viết thô cho [${client.name}].`);
+  // Deduplication & Lọc rác thô tục sớm (Tầng 1 Filter)
+  const cleanRawPosts = rawPosts.filter(p => !isToxicOrNsfw(p.url) && !isToxicOrNsfw(p.rawContent));
+  const uniquePosts = Array.from(new Map(cleanRawPosts.map(p => [p.url, p])).values());
+  logger.info(`📌 Gom được ${uniquePosts.length} bài viết thô hợp lệ cho [${client.name}].`);
 
   let leadsPushed = 0;
   let leadsFound = 0;
@@ -51,11 +63,22 @@ export async function runClientPipeline(
     leadsFound = approvedLeads.length;
     logger.info(`🎯 AI duyệt được ${leadsFound}/${uniquePosts.length} lead đạt chuẩn cho [${client.name}].`);
 
+    // TẦNG 4 VERIFICATION: Kiểm tra Live Status URL trước khi bơm vào Sheet
+    const verifiedLeads = [];
+    for (const lead of approvedLeads) {
+      const isLive = await verifyUrlIsLiveAndClean(lead.url);
+      if (isLive) {
+        verifiedLeads.push(lead);
+      } else {
+        logger.warn(`🚫 [Pipeline Verifier] Bỏ qua lead do link bị gỡ hoặc dính từ thô tục: "${lead.url}"`);
+      }
+    }
+
     // Bước 4: Bơm thẳng vào Sheet riêng của khách
-    if (approvedLeads.length > 0) {
-      const success = await exportToClientSheet(client.spreadsheetId, approvedLeads, config.sheetWebhookUrl);
+    if (verifiedLeads.length > 0) {
+      const success = await exportToClientSheet(client.spreadsheetId, verifiedLeads, config.sheetWebhookUrl);
       if (success) {
-        leadsPushed = approvedLeads.length;
+        leadsPushed = verifiedLeads.length;
       } else {
         errors.push('Lỗi khi xuất dữ liệu sang Google Sheet');
       }
