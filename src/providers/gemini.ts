@@ -16,16 +16,22 @@ export async function generateDorksFromNiche(
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
 
   const prompt = `
-Bạn là chuyên gia săn Lead trên mạng xã hội Việt Nam.
+Bạn là chuyên gia săn Lead cấp cao trên mạng xã hội và diễn đàn Việt Nam.
 Khách hàng cần tìm: "${nicheString}"
 
-Nhiệm vụ: Tạo ra đúng 4 câu tìm kiếm Google Dorking tự nhiên và hiệu quả nhất để tìm bài đăng của người cần mua/tư vấn/tìm dịch vụ.
-Quy tắc:
-- Không dùng ngoặc đơn lồng nhau phức tạp.
-- Dùng từ ngữ tự nhiên người Việt hay hỏi trên Threads, Facebook, Diễn đàn.
+Nhiệm vụ: Tạo ra đúng 16 câu tìm kiếm Google Dorking tự nhiên và biến thể đa dạng nhất để quét sạch các bài đăng của người có nhu cầu thật.
+Tạo 16 câu chia thành 4 nhóm chiến lược:
+Nhóm 1 (Direct Intent - Nhu cầu trực tiếp): "cần tìm", "cần tư vấn", "muốn mua/đăng ký", "ai biết/xin chỗ"
+Nhóm 2 (Platforms - Nền tảng chuyên biệt): site:facebook.com/groups, site:threads.net, site:voz.vn, site:tinhte.vn
+Nhóm 3 (Synonyms & Slang - Từ đồng nghĩa/ngân sách/thủ tục): "ngân sách", "tài chính", "thủ tục", "báo giá", "chi phí"
+Nhóm 4 (Locality & Variations - Địa phương/Phân khúc): "Hà Nội", "TPHCM", "toàn quốc", "chính hãng", "trọn gói", "uy tín"
 
-Trả về đúng mảng JSON gồm 4 chuỗi:
-["câu 1", "câu 2", "câu 3", "câu 4"]
+Quy tắc:
+- Không dùng ngoặc đơn lồng nhau quá phức tạp làm hỏng dork.
+- Dùng từ ngữ tự nhiên người Việt hay hỏi trên Facebook, Threads, Voz, Tinhte.
+
+Trả về đúng mảng JSON gồm 16 chuỗi:
+["câu 1", "câu 2", ..., "câu 16"]
 `;
 
   try {
@@ -50,13 +56,25 @@ Trả về đúng mảng JSON gồm 4 chuỗi:
     if (Array.isArray(dorks) && dorks.length > 0) return dorks;
     throw new Error('Invalid array response from Gemini');
   } catch (err: any) {
-    logger.warn(`[Gemini Dorking] Fallback to regex dorks due to error: ${err.message}`);
+    logger.warn(`[Gemini Dorking] Fallback to expanded regex dorks due to error: ${err.message}`);
     const clean = nicheString.replace(/tìm lead|nhu cầu|khách hàng/gi, '').replace(/\|/g, ' ').trim();
     return [
       `tư vấn ${clean}`,
       `cần tìm ${clean}`,
-      `site:threads.net ${clean}`,
-      `site:facebook.com/groups ${clean}`
+      `muốn mua ${clean}`,
+      `báo giá ${clean}`,
+      `site:threads.net "tư vấn" ${clean}`,
+      `site:threads.net "cần tìm" ${clean}`,
+      `site:facebook.com/groups "tư vấn" ${clean}`,
+      `site:facebook.com/groups "cần" ${clean}`,
+      `site:voz.vn ${clean}`,
+      `site:tinhte.vn ${clean}`,
+      `hỏi kinh nghiệm ${clean}`,
+      `xin địa chỉ ${clean}`,
+      `ngân sách ${clean}`,
+      `tài chính ${clean}`,
+      `dịch vụ ${clean} uy tín`,
+      `trọn gói ${clean}`
     ];
   }
 }

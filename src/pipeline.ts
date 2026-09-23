@@ -2,6 +2,8 @@ import { ActiveClientFromAdmin, AppConfig, PipelineResult, RawScrapedPost } from
 import { generateDorksFromNiche, batchEvaluateContent } from './providers/gemini';
 import { evaluateIntentBinary } from './providers/ai-intent-judge';
 import { searchSerpDirect } from './providers/serp-direct';
+import { fetchBingSerp } from './providers/bing-direct';
+import { fetchSearXNG } from './providers/searxng';
 import { searchJina } from './providers/jina';
 import { searchFirecrawl } from './providers/firecrawl';
 import { exportToClientSheet } from './providers/gsheet';
@@ -10,6 +12,7 @@ import { logger } from './infra/logger';
 import { isToxicOrNsfw } from './infra/content-filter';
 import { verifyUrlIsLiveAndClean } from './infra/url-verifier';
 import { containsNegativeKeywords } from './infra/niche-negative-keywords';
+import { normalizeUrl } from './infra/url-normalizer';
 
 export async function runClientPipeline(
   client: ActiveClientFromAdmin,
@@ -24,34 +27,49 @@ export async function runClientPipeline(
   logger.info(`📍 SPREADSHEET ID: [${client.spreadsheetId}]`);
   logger.info(`======================================================`);
 
-  // Bước 1: AI tự động sinh Dorking theo định nghĩa ngách
+  // Bước 1: AI tự động sinh 16 câu Dorking chia theo 4 nhóm chiến lược
   const dynamicDorks = await generateDorksFromNiche(client.nicheDefinition, config.geminiKey, config.geminiModel);
-  logger.info(`🤖 AI sinh ${dynamicDorks.length} câu Dorking cho [${client.name}]: ${JSON.stringify(dynamicDorks)}`);
+  logger.info(`🤖 AI sinh ${dynamicDorks.length} câu Dorking đa dạng cho [${client.name}]: ${JSON.stringify(dynamicDorks)}`);
 
-  // Bước 2: Cào dữ liệu với Hàng Rào Dự Phòng 3 Tầng (3-Tier Hybrid Engine)
+  // Bước 2: Cào dữ liệu siêu quy mô với Đa Động Cơ Direct SERP (Google + DDG + Bing + SearXNG)
   const rawPosts: RawScrapedPost[] = [];
-  for (const dork of dynamicDorks) {
-    // Tầng 1: Cào Direct SERP (0đ API, tốc độ siêu nhanh <500ms)
-    logger.info(`🌐 [Tier 1: Direct SERP] [${client.name}]: "${dork}"`);
-    let dorkPosts = await searchSerpDirect(dork, client.timeFilter);
 
-    // Tầng 2: Jina API Fallback (với Snippet-Only Header tiết kiệm 85% token)
+  for (let i = 0; i < dynamicDorks.length; i++) {
+    const dork = dynamicDorks[i];
+    logger.info(`🔎 [Dork ${i + 1}/${dynamicDorks.length}] [${client.name}]: "${dork}"`);
+
+    // Động cơ 1 & 2: Direct Google + DuckDuckGo SERP (Phân trang 3 trang)
+    let dorkPosts = await searchSerpDirect(dork, client.timeFilter, 3);
+
+    // Động cơ 3: Direct Bing SERP (Phân trang 2 trang)
+    const bingPosts = await fetchBingSerp(dork, 2);
+    if (bingPosts.length > 0) {
+      dorkPosts.push(...bingPosts);
+    }
+
+    // Động cơ 4: SearXNG Multi-Instance JSON API
+    const searxPosts = await fetchSearXNG(dork, 2);
+    if (searxPosts.length > 0) {
+      dorkPosts.push(...searxPosts);
+    }
+
+    // Tầng 2 Fallback: Jina API Fallback (nếu các động cơ 0đ trên không ra bài)
     if (dorkPosts.length === 0 && config.jinaKey) {
       logger.info(`🔍 [Tier 2: Jina Snippet Fallback] [${client.name}]: "${dork}"`);
       dorkPosts = await searchJina(dork, config.jinaKey, client.timeFilter);
     }
 
-    // Tầng 3: Firecrawl API Fallback (Dự phòng cuối cùng)
+    // Tầng 3 Fallback: Firecrawl API Fallback
     if (dorkPosts.length === 0 && config.firecrawlKey) {
       logger.info(`🔥 [Tier 3: Firecrawl Fallback] [${client.name}]: "${dork}"`);
       dorkPosts = await searchFirecrawl(dork, config.firecrawlKey, client.timeFilter);
     }
 
     rawPosts.push(...dorkPosts);
-    await sleep(300);
+    await sleep(250);
   }
 
-  // Deduplication & Lọc rác thô tục & từ phủ định ngách sớm
+  // Chuẩn hóa URL & Deduplication & Lọc rác thô tục / từ phủ định ngách sớm
   const cleanRawPosts = rawPosts.filter(
     p =>
       !isToxicOrNsfw(p.url) &&
@@ -59,8 +77,18 @@ export async function runClientPipeline(
       !containsNegativeKeywords(p.url, client.nicheDefinition) &&
       !containsNegativeKeywords(p.rawContent, client.nicheDefinition)
   );
-  const uniquePosts = Array.from(new Map(cleanRawPosts.map(p => [p.url, p])).values());
-  logger.info(`📌 Gom được ${uniquePosts.length} bài viết thô hợp lệ cho [${client.name}].`);
+
+  // Gom trùng theo normalized URL
+  const uniquePostsMap = new Map<string, RawScrapedPost>();
+  for (const post of cleanRawPosts) {
+    const normUrl = normalizeUrl(post.url);
+    if (!uniquePostsMap.has(normUrl)) {
+      uniquePostsMap.set(normUrl, { ...post, url: normUrl });
+    }
+  }
+
+  const uniquePosts = Array.from(uniquePostsMap.values());
+  logger.info(`📌 Tổng gom được ${uniquePosts.length} bài viết thô độc nhất cho [${client.name}].`);
 
   let leadsPushed = 0;
   let leadsFound = 0;
