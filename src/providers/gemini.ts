@@ -26,9 +26,10 @@ Nhóm 2 (Platforms - Nền tảng chuyên biệt): site:facebook.com/groups, sit
 Nhóm 3 (Synonyms & Slang - Từ đồng nghĩa/ngân sách/thủ tục): "ngân sách", "tài chính", "thủ tục", "báo giá", "chi phí"
 Nhóm 4 (Locality & Variations - Địa phương/Phân khúc): "Hà Nội", "TPHCM", "toàn quốc", "chính hãng", "trọn gói", "uy tín"
 
-Quy tắc:
-- Không dùng ngoặc đơn lồng nhau quá phức tạp làm hỏng dork.
-- Dùng từ ngữ tự nhiên người Việt hay hỏi trên Facebook, Threads, Voz, Tinhte.
+Quy tắc BẮT BUỘC:
+- KHÔNG đặt ngoặc kép (") xung quanh các từ khóa thông thường (VD: viết cào tự nhiên: cần tư vấn bảo hiểm Đà Nẵng, TUYỆT ĐỐI KHÔNG viết "cần tư vấn" "bảo hiểm" Đà Nẵng làm SERP bị 0 kết quả).
+- Không dùng ngoặc đơn lồng nhau phức tạp làm hỏng dork.
+- Dùng từ ngữ tìm kiếm tự nhiên người Việt hay gõ trên Facebook, Threads, Voz, Tinhte.
 
 Trả về đúng mảng JSON gồm 16 chuỗi:
 ["câu 1", "câu 2", ..., "câu 16"]
