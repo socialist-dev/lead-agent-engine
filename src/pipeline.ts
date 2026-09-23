@@ -8,6 +8,7 @@ import { sleep } from './utils';
 import { logger } from './infra/logger';
 import { isToxicOrNsfw } from './infra/content-filter';
 import { verifyUrlIsLiveAndClean } from './infra/url-verifier';
+import { containsNegativeKeywords } from './infra/niche-negative-keywords';
 
 export async function runClientPipeline(
   client: ActiveClientFromAdmin,
@@ -49,8 +50,14 @@ export async function runClientPipeline(
     await sleep(300);
   }
 
-  // Deduplication & Lọc rác thô tục sớm (Tầng 1 Filter)
-  const cleanRawPosts = rawPosts.filter(p => !isToxicOrNsfw(p.url) && !isToxicOrNsfw(p.rawContent));
+  // Deduplication & Lọc rác thô tục & từ phủ định ngách sớm
+  const cleanRawPosts = rawPosts.filter(
+    p =>
+      !isToxicOrNsfw(p.url) &&
+      !isToxicOrNsfw(p.rawContent) &&
+      !containsNegativeKeywords(p.url, client.nicheDefinition) &&
+      !containsNegativeKeywords(p.rawContent, client.nicheDefinition)
+  );
   const uniquePosts = Array.from(new Map(cleanRawPosts.map(p => [p.url, p])).values());
   logger.info(`📌 Gom được ${uniquePosts.length} bài viết thô hợp lệ cho [${client.name}].`);
 

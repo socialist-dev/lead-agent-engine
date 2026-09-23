@@ -5,6 +5,7 @@ import { httpFetch } from '../infra/http-client';
 import { geminiRateLimiter } from '../infra/rate-limiter';
 import { logger } from '../infra/logger';
 import { isToxicOrNsfw, isLeadTimeValid } from '../infra/content-filter';
+import { containsNegativeKeywords } from '../infra/niche-negative-keywords';
 
 export async function generateDorksFromNiche(
   nicheString: string,
@@ -132,6 +133,8 @@ QUY TẮC THẨM ĐỊNH LỌC LEAD:
 1. TIÊU CHÍ DUYỆT: Chỉ duyệt bài viết/bình luận của NGƯỜI CẦN MUA / THUÊ / CẦN TƯ VẤN / TÌM DỊCH VỤ thật sự phù hợp với: "${client.nicheDefinition}".
 2. TIÊU CHÍ LOẠI BỎ: Loại bỏ hoàn toàn người bán, môi giới, cò đất, tuyển dụng, bài chào mời dịch vụ, quảng cáo spam.
 3. TIÊU CHÍ AN TOÀN NỘI DUNG: LOẠI BỎ HOÀN TOÀN bài viết chứa từ ngữ thô tục, khiếm nhã, 18+, bình luận chửi nhau, tâm sự cá nhân phiếm, hoặc bài viết đã bị gỡ.
+4. QUY TẮC NGUYÊN BẢN (STRICT GROUNDING): TUYỆT ĐỐI KHÔNG TỰ BỊA (HALLUCINATE) TÊN XE, NĂM SẢN XUẤT, HOẶC TÀI CHÍNH NẾU BÀI GỐC KHÔNG CÓ! Mọi thông tin tóm tắt phải được trích dẫn chính xác từ văn bản bài đăng.
+5. CẢNH BÁO TỪ ĐỒNG ÂM NGÁCH (HOMONYM WARNING): Đối với ngách Ô TÔ, từ 'bmw' trên Facebook/Threads có thể là tựa game Black Myth Wukong (kèm các từ game, steam, family share, acc, pass acc). LOẠI BỎ 100% NẾU KHÔNG PHẢI MUA XE BMW THẬT!
 
 QUY TẮC BẮT BUỘC ĐỂ ĐIỀN ĐẦY ĐỦ 100% DỮ LIỆU VÀO TẤT CẢ CÁC CỘT (TUYỆT ĐỐI KHÔNG ĐỂ TRỐNG HOẶC N/A):
 1. url: Copy chính xác 100% đường link URL_GỐC của bài viết tương ứng.
@@ -245,6 +248,17 @@ CHỈ TRẢ VỀ MẢNG JSON CÁC BÀI ĐẠT CHUẨN.
           isToxicOrNsfw(item.url)
         ) {
           logger.warn(`🚫 [Gemini Filter] Bỏ qua bài chứa từ thô tục khiếm nhã (${item.url})`);
+          continue;
+        }
+
+        // BỘ LỌC TỪ KHÓA PHỦ ĐỊNH NGÁCH (Loại bài nhầm đồng âm như BMW game vs xe BMW)
+        if (
+          containsNegativeKeywords(item.title, client.nicheDefinition) ||
+          containsNegativeKeywords(item.contentOrBrief, client.nicheDefinition) ||
+          containsNegativeKeywords(item.extraField1, client.nicheDefinition) ||
+          containsNegativeKeywords(item.url, client.nicheDefinition)
+        ) {
+          logger.warn(`🚫 [Gemini Filter] Bỏ qua bài dính từ khóa phủ định ngách: ${item.url}`);
           continue;
         }
 
