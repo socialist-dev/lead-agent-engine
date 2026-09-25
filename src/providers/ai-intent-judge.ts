@@ -77,7 +77,13 @@ Nếu không có bài nào đạt chuẩn, trả về mảng rỗng: []
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: 'application/json' }
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'ARRAY',
+            items: { type: 'STRING' }
+          }
+        }
       }),
       timeoutMs: 25000,
       retries: 2
@@ -89,7 +95,20 @@ Nếu không có bài nào đạt chuẩn, trả về mảng rỗng: []
     let jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     jsonText = jsonText.replace(/```json/g, '').replace(/```/g, '').trim();
 
-    const passedUrls = JSON.parse(jsonText) as string[];
+    let passedUrls: string[] = [];
+    try {
+      passedUrls = JSON.parse(jsonText);
+    } catch {
+      const match = jsonText.match(/\[\s*[\s\S]*?\s*\]/);
+      if (match) {
+        try {
+          passedUrls = JSON.parse(match[0]);
+        } catch {
+          logger.warn(`[AI Intent Judge Stage 1] Lỗi parse JSON fallback cho [${client.name}]`);
+        }
+      }
+    }
+
     if (!Array.isArray(passedUrls) || passedUrls.length === 0) return [];
 
     const passedSet = new Set(passedUrls.map(u => String(u).trim()));
