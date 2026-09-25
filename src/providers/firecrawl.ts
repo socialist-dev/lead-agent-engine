@@ -2,6 +2,7 @@ import { RawScrapedPost } from '../types';
 import { detectPlatform } from '../utils';
 import { httpFetch } from '../infra/http-client';
 import { logger } from '../infra/logger';
+import { isSpecificPostUrl } from '../infra/url-verifier';
 
 let isFirecrawlRateLimited = false;
 
@@ -52,7 +53,7 @@ export async function searchFirecrawl(
 
     for (const item of results) {
       const textContent = (item.markdown || item.description || item.snippet || item.title || '').trim();
-      if (item.url && textContent) {
+      if (item.url && textContent && isSpecificPostUrl(item.url)) {
         posts.push({
           platform: detectPlatform(item.url),
           url: item.url,

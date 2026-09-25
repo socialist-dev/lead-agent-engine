@@ -2,6 +2,7 @@ import { RawScrapedPost } from '../types';
 import { detectPlatform } from '../utils';
 import { httpFetch } from '../infra/http-client';
 import { logger } from '../infra/logger';
+import { isSpecificPostUrl } from '../infra/url-verifier';
 
 const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
@@ -135,6 +136,7 @@ async function fetchGoogleSerp(query: string, timeParam: string, maxPages = 2): 
 
 function isValidSerpUrl(url: string, seenUrls: Set<string>): boolean {
   if (!url || seenUrls.has(url)) return false;
+  if (!isSpecificPostUrl(url)) return false;
   if (
     url.includes('google.com') ||
     url.includes('google.com.vn') ||
@@ -183,8 +185,7 @@ async function fetchDuckDuckGoSerp(query: string, maxPages = 2): Promise<RawScra
         if (
           !targetUrl.includes('duckduckgo.com') &&
           !seenUrls.has(targetUrl) &&
-          !targetUrl.endsWith('.net/') &&
-          !targetUrl.endsWith('.com/')
+          isSpecificPostUrl(targetUrl)
         ) {
           seenUrls.add(targetUrl);
           pageNewItems++;

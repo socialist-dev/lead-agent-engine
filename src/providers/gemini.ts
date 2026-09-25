@@ -156,7 +156,7 @@ QUY TẮC THẨM ĐỊNH LỌC LEAD:
 5. CẢNH BÁO TỪ ĐỒNG ÂM NGÁCH (HOMONYM WARNING): Đối với ngách Ô TÔ, từ 'bmw' trên Facebook/Threads có thể là tựa game Black Myth Wukong (kèm các từ game, steam, family share, acc, pass acc). LOẠI BỎ 100% NẾU KHÔNG PHẢI MUA XE BMW THẬT!
 
 QUY TẮC BẮT BUỘC ĐỂ ĐIỀN ĐẦY ĐỦ 100% DỮ LIỆU VÀO TẤT CẢ CÁC CỘT (TUYỆT ĐỐI KHÔNG ĐỂ TRỐNG HOẶC N/A):
-1. url: Copy chính xác 100% đường link URL_GỐC của bài viết tương ứng.
+1. url: Copy chính xác 100% đường link URL_GỐC của bài viết tương ứng. TUYỆT ĐỐI CẤM COPY LINK TRANG CÁ NHÂN PROFILE (VD: threads.net/@user) HOẶC TRANG CHỦ NHÓM FACEBOOK (VD: facebook.com/groups/name). URL BẮT BUỘC PHẢI LÀ LINK BÀI ĐĂNG CỤ THỂ (VD: threads.net/@user/post/... hoặc facebook.com/.../posts/... hoặc voz.vn/t/...)!
 2. platform: Nền tảng (Threads, Facebook, TikTok, X, Voz, Web...).
 3. postedAgo (Cột C): Mốc thời gian đăng bài viết (VD: "2 giờ trước", "1 ngày trước", "25/09/2026 08:30"). TUYỆT ĐỐI KHÔNG GHI "Vừa xong", "Mới đăng gần đây", "N/A" hay "null".
 4. categoryTag (Cột D): Thẻ nhu cầu ngắn gọn (VD: "[Tư vấn mở tài khoản]", "[Mua chung cư 2PN]").

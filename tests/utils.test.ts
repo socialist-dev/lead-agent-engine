@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { detectPlatform, cleanPhoneNumber, cleanStringField, mapConcurrent, formatPostedTimeToDateTime } from '../src/utils';
+import { isSpecificPostUrl } from '../src/infra/url-verifier';
 
 describe('Utils', () => {
   it('detects platforms accurately from URLs', () => {
@@ -8,6 +9,26 @@ describe('Utils', () => {
     expect(detectPlatform('https://tiktok.com/@user/video/123')).toBe('TikTok');
     expect(detectPlatform('https://voz.vn/t/threads-post.123')).toBe('Voz');
     expect(detectPlatform('https://example.com/blog/article')).toBe('Web / Diễn đàn');
+  });
+
+  it('rejects profile URLs and accepts specific post URLs via isSpecificPostUrl', () => {
+    // Threads Profile vs Post
+    expect(isSpecificPostUrl('https://www.threads.net/@nini_vu__')).toBe(false);
+    expect(isSpecificPostUrl('https://www.threads.net/@nini_vu__/post/C_123456')).toBe(true);
+    expect(isSpecificPostUrl('https://threads.net/t/C_123456')).toBe(true);
+
+    // Facebook Group Home / Profile vs Post
+    expect(isSpecificPostUrl('https://www.facebook.com/groups/hoireviewbaohoem')).toBe(false);
+    expect(isSpecificPostUrl('https://www.facebook.com/nini_vu')).toBe(false);
+    expect(isSpecificPostUrl('https://www.facebook.com/groups/hoireviewbaohoem/posts/123456')).toBe(true);
+
+    // TikTok Profile vs Post
+    expect(isSpecificPostUrl('https://www.tiktok.com/@nini_vu')).toBe(false);
+    expect(isSpecificPostUrl('https://www.tiktok.com/@nini_vu/video/7123456789')).toBe(true);
+
+    // Voz Category vs Thread Topic
+    expect(isSpecificPostUrl('https://voz.vn/f/tro-chuyen-linh-tinh.17/')).toBe(false);
+    expect(isSpecificPostUrl('https://voz.vn/t/hoi-mua-bao-hiem.123456/')).toBe(true);
   });
 
   it('cleans phone numbers and handles fallbacks correctly', () => {
@@ -53,5 +74,6 @@ describe('Utils', () => {
     expect(results.map(r => r.status === 'fulfilled' ? r.value : null)).toEqual([2, 4, 6, 8, 10]);
   });
 });
+
 
 

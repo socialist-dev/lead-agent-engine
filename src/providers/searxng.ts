@@ -2,6 +2,7 @@ import { RawScrapedPost } from '../types';
 import { detectPlatform } from '../utils';
 import { httpFetch } from '../infra/http-client';
 import { logger } from '../infra/logger';
+import { isSpecificPostUrl } from '../infra/url-verifier';
 
 const SEARXNG_INSTANCES = [
   'https://searx.be',
@@ -43,7 +44,7 @@ export async function fetchSearXNG(query: string, maxPages = 1): Promise<RawScra
 
         let pageNewItems = 0;
         for (const item of results) {
-          if (!item.url) continue;
+          if (!item.url || !isSpecificPostUrl(item.url)) continue;
 
           const cleanUrl = item.url;
           if (seenUrls.has(cleanUrl)) continue;

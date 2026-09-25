@@ -2,6 +2,7 @@ import { RawScrapedPost } from '../types';
 import { detectPlatform } from '../utils';
 import { httpFetch } from '../infra/http-client';
 import { logger } from '../infra/logger';
+import { isSpecificPostUrl } from '../infra/url-verifier';
 
 export async function searchJina(
   query: string,
@@ -42,7 +43,7 @@ export async function searchJina(
 
       if (urlMatch) {
         const postUrl = urlMatch[1].trim();
-        if (postUrl.includes('/search') || postUrl.endsWith('.net/')) continue;
+        if (postUrl.includes('/search') || !isSpecificPostUrl(postUrl)) continue;
 
         posts.push({
           platform: detectPlatform(postUrl),

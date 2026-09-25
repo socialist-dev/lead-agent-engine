@@ -13,6 +13,75 @@ const DELETED_PAGE_INDICATORS = [
 ];
 
 /**
+ * Kiểm tra xem URL có phải là link BÀI ĐĂNG CỤ THỂ hay không.
+ * LOẠI BỎ HOÀN TOÀN: Link trang cá nhân (Profile), Trang chủ nhóm Facebook, Danh mục diễn đàn, Trang chủ domain.
+ */
+export function isSpecificPostUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const cleanUrl = url.trim().toLowerCase();
+
+  // 1. Threads (Bắt buộc phải chứa /post/ hoặc /t/)
+  if (cleanUrl.includes('threads.net')) {
+    if (!cleanUrl.includes('/post/') && !cleanUrl.includes('/t/')) {
+      return false;
+    }
+  }
+
+  // 2. Facebook (Bắt buộc phải chứa ID post hoặc permalink)
+  if (cleanUrl.includes('facebook.com') || cleanUrl.includes('fb.com')) {
+    const isFbPost =
+      cleanUrl.includes('/posts/') ||
+      cleanUrl.includes('/permalink/') ||
+      cleanUrl.includes('/permalink.php') ||
+      cleanUrl.includes('/photo') ||
+      cleanUrl.includes('/video') ||
+      cleanUrl.includes('/story') ||
+      cleanUrl.includes('/reel') ||
+      cleanUrl.includes('story_fbid') ||
+      cleanUrl.includes('fbid=') ||
+      cleanUrl.includes('pfbid');
+
+    if (!isFbPost) {
+      return false;
+    }
+  }
+
+  // 3. TikTok (Bắt buộc phải chứa /video/ hoặc /photo/ hoặc v=)
+  if (cleanUrl.includes('tiktok.com')) {
+    if (!cleanUrl.includes('/video/') && !cleanUrl.includes('/photo/') && !cleanUrl.includes('v=')) {
+      return false;
+    }
+  }
+
+  // 4. YouTube (Bắt buộc phải chứa /watch hoặc /shorts/ hoặc youtu.be)
+  if (cleanUrl.includes('youtube.com') || cleanUrl.includes('youtu.be')) {
+    if (!cleanUrl.includes('/watch') && !cleanUrl.includes('/shorts/') && !cleanUrl.includes('youtu.be/')) {
+      return false;
+    }
+  }
+
+  // 5. Voz / Forums (Bắt buộc phải chứa /t/)
+  if (cleanUrl.includes('voz.vn')) {
+    if (!cleanUrl.includes('/t/')) {
+      return false;
+    }
+  }
+
+  // 6. Generic homepage root
+  try {
+    const parsed = new URL(cleanUrl);
+    const path = parsed.pathname.replace(/\/+$/, '');
+    if (path === '' || path === '/') {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+
+  return true;
+}
+
+/**
  * Kiểm tra xem URL có tồn tại thực sự trên mạng hay không (Live URL Check)
  * và có chứa dấu hiệu bài đã bị gỡ hoặc nội dung khiếm nhã trong tiêu đề hay không
  */
@@ -23,6 +92,12 @@ export function verifyLiveUrl(url: string): boolean {
   // Kiểm tra cấu trúc URL hợp lệ
   if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
     logger.warn(`🔗 [URL Verifier] Link không hợp lệ: "${cleanUrl}"`);
+    return false;
+  }
+
+  // Kiểm tra xem có phải link bài đăng cụ thể hay không (Chặn Threads Profile, FB Group Home...)
+  if (!isSpecificPostUrl(cleanUrl)) {
+    logger.warn(`🔗 [URL Verifier] Loại bỏ link trang cá nhân / trang chủ nhóm (Không phải bài đăng): "${cleanUrl}"`);
     return false;
   }
 

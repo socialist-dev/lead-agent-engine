@@ -2,6 +2,7 @@ import { RawScrapedPost } from '../types';
 import { detectPlatform } from '../utils';
 import { httpFetch } from '../infra/http-client';
 import { logger } from '../infra/logger';
+import { isSpecificPostUrl } from '../infra/url-verifier';
 
 const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
@@ -55,7 +56,7 @@ export async function fetchBingSerp(query: string, maxPages = 2): Promise<RawScr
         if (
           cleanUrl.includes('bing.com') ||
           cleanUrl.includes('microsoft.com') ||
-          cleanUrl.endsWith('.net/')
+          !isSpecificPostUrl(cleanUrl)
         ) {
           continue;
         }

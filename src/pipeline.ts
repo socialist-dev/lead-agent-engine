@@ -10,7 +10,7 @@ import { exportToClientSheet } from './providers/gsheet';
 import { sleep, mapConcurrent } from './utils';
 import { logger } from './infra/logger';
 import { isToxicOrNsfw } from './infra/content-filter';
-import { verifyUrlIsLiveAndClean } from './infra/url-verifier';
+import { verifyUrlIsLiveAndClean, isSpecificPostUrl } from './infra/url-verifier';
 import { containsNegativeKeywords } from './infra/niche-negative-keywords';
 import { normalizeUrl } from './infra/url-normalizer';
 
@@ -79,9 +79,10 @@ export async function runClientPipeline(
     await sleep(250); // Nghỉ 250ms giữa các dork tránh Google rate limit burst
   }
 
-  // Chuẩn hóa URL & Deduplication & Lọc rác thô tục / từ phủ định ngách sớm
+  // Chuẩn hóa URL & Deduplication & Lọc rác thô tục / từ phủ định ngách / link profile rác
   const cleanRawPosts = rawPosts.filter(
     p =>
+      isSpecificPostUrl(p.url) &&
       !isToxicOrNsfw(p.url) &&
       !isToxicOrNsfw(p.rawContent) &&
       !containsNegativeKeywords(p.url, client.nicheDefinition) &&
