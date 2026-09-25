@@ -44,15 +44,32 @@ export function isToxicOrNsfw(text: string): boolean {
  */
 export function isLeadTimeValid(postedAgo: string, maxDays = 7): boolean {
   if (!postedAgo) return true;
-  const timeStr = String(postedAgo).toLowerCase().trim();
+  const timeStr = String(postedAgo).trim();
 
-  // Chặn tuyệt đối bài viết chứa chữ "tháng" hoặc "năm" (VD: "6 tháng trước", "1 năm trước")
-  if (/tháng|month|năm|year/i.test(timeStr)) {
-    logger.warn(`⏰ [Time Filter] Loại bỏ bài quá cũ: "${postedAgo}" (Chứa tháng/năm)`);
+  // 1. Kiểm tra định dạng mốc ngày dd/MM/yyyy
+  const dateMatch = timeStr.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (dateMatch) {
+    const day = parseInt(dateMatch[1], 10);
+    const month = parseInt(dateMatch[2], 10) - 1;
+    const year = parseInt(dateMatch[3], 10);
+    const postDate = new Date(year, month, day);
+    const now = new Date();
+    const diffMs = now.getTime() - postDate.getTime();
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+    if (diffDays > maxDays) {
+      logger.warn(`⏰ [Time Filter] Loại bỏ bài đăng quá ${maxDays} ngày: "${postedAgo}" (${Math.round(diffDays)} ngày)`);
+      return false;
+    }
+    return true;
+  }
+
+  // 2. Chặn bài chứa chữ "tháng trước", "năm trước", "months ago", "years ago"
+  if (/tháng\s+trước|month|năm\s+trước|year/i.test(timeStr)) {
+    logger.warn(`⏰ [Time Filter] Loại bỏ bài quá cũ: "${postedAgo}"`);
     return false;
   }
 
-  // Kiểm tra số ngày nếu chứa chữ "ngày" hoặc "day" (VD: "10 ngày trước")
+  // 3. Kiểm tra số ngày nếu chứa chữ "ngày" hoặc "day" (VD: "10 ngày trước")
   const dayMatch = timeStr.match(/(\d+)\s*(ngày|day)/i);
   if (dayMatch) {
     const days = parseInt(dayMatch[1], 10);
@@ -64,3 +81,4 @@ export function isLeadTimeValid(postedAgo: string, maxDays = 7): boolean {
 
   return true;
 }
+

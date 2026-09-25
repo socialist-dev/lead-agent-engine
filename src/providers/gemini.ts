@@ -1,6 +1,6 @@
 import { ExtractedItem, ActiveClientFromAdmin, RawScrapedPost } from '../types';
 import { getTimeFilterRule } from '../config';
-import { formatScanTimeVN, cleanPhoneNumber, cleanStringField } from '../utils';
+import { formatScanTimeVN, cleanPhoneNumber, cleanStringField, formatPostedTimeToDateTime } from '../utils';
 import { httpFetch } from '../infra/http-client';
 import { geminiRateLimiter } from '../infra/rate-limiter';
 import { logger } from '../infra/logger';
@@ -158,7 +158,7 @@ QUY TẮC THẨM ĐỊNH LỌC LEAD:
 QUY TẮC BẮT BUỘC ĐỂ ĐIỀN ĐẦY ĐỦ 100% DỮ LIỆU VÀO TẤT CẢ CÁC CỘT (TUYỆT ĐỐI KHÔNG ĐỂ TRỐNG HOẶC N/A):
 1. url: Copy chính xác 100% đường link URL_GỐC của bài viết tương ứng.
 2. platform: Nền tảng (Threads, Facebook, TikTok, X, Voz, Web...).
-3. postedAgo (Cột C): Thời gian đăng bằng TIẾNG VIỆT (VD: "Vừa xong", "2 giờ trước", "1 ngày trước"). Không dùng tiếng Anh hay "N/A".
+3. postedAgo (Cột C): Mốc thời gian đăng bài viết (VD: "2 giờ trước", "1 ngày trước", "25/09/2026 08:30"). TUYỆT ĐỐI KHÔNG GHI "Vừa xong", "Mới đăng gần đây", "N/A" hay "null".
 4. categoryTag (Cột D): Thẻ nhu cầu ngắn gọn (VD: "[Tư vấn mở tài khoản]", "[Mua chung cư 2PN]").
 5. scoreOrPriority (Cột E): Điểm tiềm năng ngắn gọn (VD: "5 ⭐", "4 ⭐", "3 ⭐").
 6. title (Cột F): Tóm tắt ngắn tiêu đề nhu cầu của người đăng (TUYỆT ĐỐI KHÔNG ĐỂ TRỐNG).
@@ -246,16 +246,12 @@ CHỈ TRẢ VỀ MẢNG JSON CÁC BÀI ĐẠT CHUẨN.
 
     for (const item of approvedItems) {
       if (item && item.url) {
-        let cleanTime = String(item.postedAgo || 'Mới đăng gần đây').trim();
-        cleanTime = cleanTime
-          .replace(/days? ago/gi, 'ngày trước')
-          .replace(/hours? ago/gi, 'giờ trước')
-          .replace(/mins? ago/gi, 'phút trước')
-          .replace(/N\/A/gi, 'Mới đăng gần đây');
+        // Quy đổi mốc thời gian sang định dạng Ngày/Tháng/Năm Giờ:Phút (chính xác tuyệt đối)
+        const formattedTime = formatPostedTimeToDateTime(item.postedAgo);
 
-        // TẦNG 2: BỘ LỌC THỜI GIAN CỨNG (Chặn bài "6 tháng trước", "1 năm trước", "> 7 ngày")
-        if (!isLeadTimeValid(cleanTime, 7)) {
-          logger.warn(`🚫 [Gemini Filter] Bỏ qua bài do quá thời hạn: "${cleanTime}" (${item.url})`);
+        // TẦNG 2: BỘ LỌC THỜI GIAN CỨNG (Chặn bài quá 7 ngày hoặc chứa tháng/năm cũ)
+        if (!isLeadTimeValid(formattedTime, 7)) {
+          logger.warn(`🚫 [Gemini Filter] Bỏ qua bài do quá thời hạn: "${formattedTime}" (${item.url})`);
           continue;
         }
 
@@ -284,7 +280,7 @@ CHỈ TRẢ VỀ MẢNG JSON CÁC BÀI ĐẠT CHUẨN.
         const cleanContact = cleanPhoneNumber(item.extraField2);
         const scanTimeVal = scanTimeFormatted;
         const platformVal = cleanStringField(item.platform, 'Facebook');
-        const postedAgoVal = cleanStringField(cleanTime, 'Mới đăng gần đây');
+        const postedAgoVal = formattedTime;
         const tagVal = cleanStringField(item.categoryTag, '[Lead Tiềm Năng]');
         const scoreVal = cleanStringField(item.scoreOrPriority, '5 ⭐');
         const titleVal = cleanStringField(item.title, 'Nhu cầu khách hàng');

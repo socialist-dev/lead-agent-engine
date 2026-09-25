@@ -65,6 +65,74 @@ export function cleanStringField(val: any, fallback: string): string {
   return str;
 }
 
+export function formatPostedTimeToDateTime(rawTime: string): string {
+  const now = new Date();
+  const vnTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const formatDate = (d: Date) => {
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  if (!rawTime) return formatDate(vnTime);
+  const str = String(rawTime).trim().toLowerCase();
+
+  // 1. Mốc ngày tháng năm đã có sẵn (VD: 25/09/2026 14:30 hoặc 25/09/2026)
+  const existingDateMatch = str.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+  if (existingDateMatch) {
+    const day = pad(parseInt(existingDateMatch[1], 10));
+    const month = pad(parseInt(existingDateMatch[2], 10));
+    const year = existingDateMatch[3];
+    const hour = existingDateMatch[4] ? pad(parseInt(existingDateMatch[4], 10)) : pad(vnTime.getHours());
+    const min = existingDateMatch[5] ? pad(parseInt(existingDateMatch[5], 10)) : pad(vnTime.getMinutes());
+    return `${day}/${month}/${year} ${hour}:${min}`;
+  }
+
+  // 2. Các từ tương đối kiểu "vừa xong", "mới đăng", "n/a", "null" -> Quy đổi sang ngày giờ quét hiện tại
+  if (
+    str === '' ||
+    str.includes('vừa xong') ||
+    str.includes('vừa mới') ||
+    str.includes('mới đăng') ||
+    str.includes('mới đây') ||
+    str.includes('vừa đăng') ||
+    str.includes('mới xong') ||
+    str.includes('just now') ||
+    str.includes('n/a') ||
+    str === 'null' ||
+    str === 'undefined'
+  ) {
+    return formatDate(vnTime);
+  }
+
+  // 3. "X phút trước" / "X min ago"
+  const minMatch = str.match(/(\d+)\s*(phút|min)/i);
+  if (minMatch) {
+    const mins = parseInt(minMatch[1], 10);
+    const target = new Date(vnTime.getTime() - mins * 60 * 1000);
+    return formatDate(target);
+  }
+
+  // 4. "X giờ trước" / "X hours ago" / "Xh"
+  const hourMatch = str.match(/(\d+)\s*(giờ|hour|h\b)/i);
+  if (hourMatch) {
+    const hours = parseInt(hourMatch[1], 10);
+    const target = new Date(vnTime.getTime() - hours * 60 * 60 * 1000);
+    return formatDate(target);
+  }
+
+  // 5. "X ngày trước" / "X days ago" / "Xd"
+  const dayMatch = str.match(/(\d+)\s*(ngày|day|d\b)/i);
+  if (dayMatch) {
+    const days = parseInt(dayMatch[1], 10);
+    const target = new Date(vnTime.getTime() - days * 24 * 60 * 60 * 1000);
+    return formatDate(target);
+  }
+
+  // Fallback mặc định
+  return formatDate(vnTime);
+}
+
 export async function mapConcurrent<T, R>(
   items: T[],
   limit: number,
@@ -89,4 +157,5 @@ export async function mapConcurrent<T, R>(
   await Promise.all(workers);
   return results;
 }
+
 

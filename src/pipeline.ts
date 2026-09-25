@@ -5,7 +5,7 @@ import { searchSerpDirect, resetSerpState } from './providers/serp-direct';
 import { fetchBingSerp } from './providers/bing-direct';
 import { fetchSearXNG } from './providers/searxng';
 import { searchJina } from './providers/jina';
-import { searchFirecrawl } from './providers/firecrawl';
+import { searchFirecrawl, resetFirecrawlState } from './providers/firecrawl';
 import { exportToClientSheet } from './providers/gsheet';
 import { sleep, mapConcurrent } from './utils';
 import { logger } from './infra/logger';
@@ -21,8 +21,9 @@ export async function runClientPipeline(
   const startTime = Date.now();
   const errors: string[] = [];
 
-  // Reset SERP rate limit flag for new client run
+  // Reset SERP & Firecrawl rate limit flags for new client run
   resetSerpState();
+  resetFirecrawlState();
 
   logger.info(`\n======================================================`);
   logger.info(`KHÁCH HÀNG: [${client.name}] | GÓI: [${client.sku}]`);

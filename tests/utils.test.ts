@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectPlatform, cleanPhoneNumber, cleanStringField, mapConcurrent } from '../src/utils';
+import { detectPlatform, cleanPhoneNumber, cleanStringField, mapConcurrent, formatPostedTimeToDateTime } from '../src/utils';
 
 describe('Utils', () => {
   it('detects platforms accurately from URLs', () => {
@@ -19,6 +19,23 @@ describe('Utils', () => {
     expect(cleanPhoneNumber('')).toBe('Chưa có SĐT (Inbox qua link bài)');
   });
 
+  it('formats posted time to precise DD/MM/YYYY HH:mm and eliminates Vừa xong', () => {
+    const formattedNow = formatPostedTimeToDateTime('Vừa xong');
+    expect(formattedNow).toMatch(/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/);
+
+    const formattedMoiDang = formatPostedTimeToDateTime('Mới đăng gần đây');
+    expect(formattedMoiDang).toMatch(/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/);
+
+    const formattedNA = formatPostedTimeToDateTime('N/A');
+    expect(formattedNA).toMatch(/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/);
+
+    const formattedExplicit = formatPostedTimeToDateTime('24/09/2026 14:30');
+    expect(formattedExplicit).toBe('24/09/2026 14:30');
+
+    const formattedRelativeMin = formatPostedTimeToDateTime('30 phút trước');
+    expect(formattedRelativeMin).toMatch(/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/);
+  });
+
   it('cleans string fields with fallbacks', () => {
     expect(cleanStringField('Tài chính 3 tỷ', 'Theo thỏa thuận')).toBe('Tài chính 3 tỷ');
     expect(cleanStringField('', 'Theo thỏa thuận')).toBe('Theo thỏa thuận');
@@ -36,4 +53,5 @@ describe('Utils', () => {
     expect(results.map(r => r.status === 'fulfilled' ? r.value : null)).toEqual([2, 4, 6, 8, 10]);
   });
 });
+
 

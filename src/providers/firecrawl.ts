@@ -3,12 +3,18 @@ import { detectPlatform } from '../utils';
 import { httpFetch } from '../infra/http-client';
 import { logger } from '../infra/logger';
 
+let isFirecrawlRateLimited = false;
+
+export function resetFirecrawlState(): void {
+  isFirecrawlRateLimited = false;
+}
+
 export async function searchFirecrawl(
   query: string,
   apiKey: string,
   _timeFilter = 'qdr:d'
 ): Promise<RawScrapedPost[]> {
-  if (!apiKey) return [];
+  if (!apiKey || isFirecrawlRateLimited) return [];
   const posts: RawScrapedPost[] = [];
 
   try {
@@ -20,18 +26,24 @@ export async function searchFirecrawl(
       },
       body: JSON.stringify({
         query: query,
-        limit: 10,
+        limit: 5,
         scrapeOptions: {
-          formats: ['markdown']
+          formats: ['markdown'],
+          onlyMainContent: true
         }
       }),
-      timeoutMs: 15000,
-      retries: 2
+      timeoutMs: 8000,
+      retries: 1
     });
 
     if (!res.ok) {
-      const errText = await res.text();
-      logger.warn(`[Firecrawl] HTTP Error ${res.status}: ${errText.slice(0, 100)}`);
+      if (res.status === 429) {
+        logger.warn(`[Firecrawl] HTTP 429 Rate Limit. Bỏ qua Firecrawl các dork tiếp theo.`);
+        isFirecrawlRateLimited = true;
+      } else {
+        const errText = await res.text();
+        logger.warn(`[Firecrawl] HTTP Error ${res.status}: ${errText.slice(0, 100)}`);
+      }
       return [];
     }
 
@@ -39,12 +51,12 @@ export async function searchFirecrawl(
     const results = json.data || json.results || [];
 
     for (const item of results) {
-      const textContent = item.markdown || item.description || item.snippet || item.title || '';
+      const textContent = (item.markdown || item.description || item.snippet || item.title || '').trim();
       if (item.url && textContent) {
         posts.push({
           platform: detectPlatform(item.url),
           url: item.url,
-          rawContent: `Title: ${item.title || ''}\nURL Source: ${item.url}\n\n${textContent}`
+          rawContent: `Title: ${item.title || ''}\nURL Source: ${item.url}\n\n${textContent.slice(0, 500)}`
         });
       }
     }
@@ -54,4 +66,5 @@ export async function searchFirecrawl(
 
   return posts;
 }
+
 
