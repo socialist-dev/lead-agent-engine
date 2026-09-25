@@ -128,9 +128,9 @@ export async function runClientPipeline(
 
       // Bước 4: Bơm thẳng vào Sheet riêng của khách
       if (verifiedLeads.length > 0) {
-        const success = await exportToClientSheet(client.spreadsheetId, verifiedLeads, config.sheetWebhookUrl);
-        if (success) {
-          leadsPushed = verifiedLeads.length;
+        const pushedCount = await exportToClientSheet(client.spreadsheetId, verifiedLeads, config.sheetWebhookUrl);
+        if (pushedCount >= 0) {
+          leadsPushed = pushedCount;
         } else {
           errors.push('Lỗi khi xuất dữ liệu sang Google Sheet');
         }

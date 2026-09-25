@@ -67,9 +67,9 @@ export async function exportToClientSheet(
   spreadsheetId: string,
   items: ExtractedItem[],
   webhookUrl: string
-): Promise<boolean> {
+): Promise<number> {
   const cleanSheetId = (spreadsheetId || '').trim();
-  if (!webhookUrl || items.length === 0 || !cleanSheetId) return false;
+  if (!webhookUrl || items.length === 0 || !cleanSheetId) return -1;
 
   try {
     const res = await httpFetch(webhookUrl, {
@@ -86,13 +86,27 @@ export async function exportToClientSheet(
     const result = await res.text();
     if (result.includes('<!DOCTYPE') || result.includes('<html')) {
       logger.error(`❌ [Google Sheet] Webhook trả về HTML lỗi cho Sheet [${cleanSheetId}]. Vui lòng kiểm tra lại quyền truy cập File Sheet hoặc Webhook!`);
-      return false;
+      return -1;
     }
-    logger.info(`📊 [Google Sheet] Đã bơm ${items.length} lead vào Sheet [${cleanSheetId}]: ${result.slice(0, 100)}`);
-    return true;
+
+    let insertedCount = items.length;
+    try {
+      const jsonRes = JSON.parse(result);
+      if (typeof jsonRes.inserted === 'number') {
+        insertedCount = jsonRes.inserted;
+      }
+    } catch {}
+
+    if (insertedCount > 0) {
+      logger.info(`📊 [Google Sheet] Đã bơm thành công ${insertedCount}/${items.length} lead mới vào Sheet [${cleanSheetId}].`);
+    } else {
+      logger.info(`ℹ️ [Google Sheet] 0 lead mới được chèn vào Sheet [${cleanSheetId}] (Do tất cả ${items.length} lead đã tồn tại trùng lặp trên Sheet từ trước).`);
+    }
+
+    return insertedCount;
   } catch (err: any) {
     logger.error(`[Google Sheet] Lỗi xuất dữ liệu [${cleanSheetId}]: ${err.message}`);
-    return false;
+    return -1;
   }
 }
 
