@@ -27,7 +27,7 @@ export function isSpecificPostUrl(url: string): boolean {
     }
   }
 
-  // 2. Facebook (Bắt buộc phải chứa ID post hoặc permalink)
+  // 2. Facebook (Bắt buộc phải chứa ID post hoặc permalink hoặc share link)
   if (cleanUrl.includes('facebook.com') || cleanUrl.includes('fb.com')) {
     const isFbPost =
       cleanUrl.includes('/posts/') ||
@@ -39,7 +39,8 @@ export function isSpecificPostUrl(url: string): boolean {
       cleanUrl.includes('/reel') ||
       cleanUrl.includes('story_fbid') ||
       cleanUrl.includes('fbid=') ||
-      cleanUrl.includes('pfbid');
+      cleanUrl.includes('pfbid') ||
+      cleanUrl.includes('/share/');
 
     if (!isFbPost) {
       return false;

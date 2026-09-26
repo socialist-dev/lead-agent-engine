@@ -74,11 +74,17 @@ export function containsNegativeKeywords(text: string, nicheDefinition: string):
 
   const lowerText = text.toLowerCase();
   for (const kw of keywords) {
-    // Sử dụng Regex ranh giới từ để tránh khớp nhầm chuỗi con
-    const pattern = new RegExp(`\\b${kw.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'i');
-    if (pattern.test(lowerText) || lowerText.includes(kw)) {
-      logger.warn(`🚫 [Niche Negative Filter] Loại bỏ bài viết chứa từ phủ định ngách [${category}]: "${kw}"`);
-      return true;
+    if (kw.length <= 3) {
+      const pattern = new RegExp(`(?:^|\\s|\\/|\\.|_|-)${kw.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}(?:$|\\s|\\/|\\.|_|-|\\?)`, 'i');
+      if (pattern.test(lowerText)) {
+        logger.warn(`🚫 [Niche Negative Filter] Loại bỏ bài viết chứa từ phủ định ngách [${category}]: "${kw}"`);
+        return true;
+      }
+    } else {
+      if (lowerText.includes(kw)) {
+        logger.warn(`🚫 [Niche Negative Filter] Loại bỏ bài viết chứa từ phủ định ngách [${category}]: "${kw}"`);
+        return true;
+      }
     }
   }
 
