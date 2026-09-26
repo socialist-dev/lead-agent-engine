@@ -44,6 +44,9 @@ export interface RawScrapedPost {
 
 export interface PipelineResult {
   client: string;
+  rawPostsFound: number;
+  cachedSkipped: number;
+  freshEvaluated: number;
   leadsFound: number;
   leadsPushed: number;
   durationMs: number;

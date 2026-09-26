@@ -41,7 +41,9 @@ async function main() {
       const val = res.value as PipelineResult;
       totalLeadsFound += val.leadsFound;
       totalLeadsPushed += val.leadsPushed;
-      logger.info(`- [${clientName}]: ${val.leadsPushed}/${val.leadsFound} leads pushed (${(val.durationMs / 1000).toFixed(1)}s)`);
+      logger.info(
+        `- [${clientName}]: Gom ${val.rawPostsFound} bài thô (${val.cachedSkipped} trùng cache, ${val.freshEvaluated} bài mới AI duyệt) -> Đã đẩy ${val.leadsPushed}/${val.leadsFound} leads (${(val.durationMs / 1000).toFixed(1)}s)`
+      );
     } else {
       logger.error(`- [${clientName}]: LỖI - ${res.reason?.message || res.reason}`);
     }

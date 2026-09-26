@@ -159,6 +159,9 @@ export async function runClientPipeline(
   const durationMs = Date.now() - startTime;
   return {
     client: client.name,
+    rawPostsFound: uniquePosts.length,
+    cachedSkipped: cachedCount,
+    freshEvaluated: freshPosts.length,
     leadsFound,
     leadsPushed,
     durationMs,
