@@ -115,6 +115,9 @@ export async function runClientPipeline(
 
   // Bước 3: AI QUY TRÌNH 2 GIAI ĐOẠN (2-Stage AI Pipeline)
   if (freshPosts.length > 0) {
+    // Đánh dấu mặc định tất cả các bài cào mới vào Soft-Cache (TTL 3 ngày nếu không thành lead)
+    markUrlsSeen(freshPosts.map(p => p.url), 'REJECTED');
+
     // Stage 1: AI Intent Judge thẩm định ý định mua dương tính (Binary YES/NO)
     const stage1ApprovedPosts = await evaluateIntentBinary(freshPosts, client, config.geminiKey, config.geminiModel);
 
@@ -127,8 +130,8 @@ export async function runClientPipeline(
       leadsFound = approvedLeads.length;
       logger.info(`🎯 AI Stage 2 bóc tách được ${leadsFound}/${stage1ApprovedPosts.length} lead đạt chuẩn cho [${client.name}].`);
 
-      // Ghi nhận URL đã thẩm định vào persistent cache
-      markUrlsSeen(stage1ApprovedPosts.map(p => p.url));
+      // Ghi nhận các lead thành công vào persistent cache với TTL 30 ngày
+      markUrlsSeen(approvedLeads.map(p => p.url), 'APPROVED');
 
       // TẦNG 4 VERIFICATION: Kiểm tra Live Status URL trước khi bơm vào Sheet
       const verifiedLeads = [];

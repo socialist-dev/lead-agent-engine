@@ -26,10 +26,17 @@ export async function searchSerpDirect(
     return googlePosts;
   }
 
-  // Thử 2: DuckDuckGo HTML Scraper Fallback (Multi-page)
+  // Thử 2: DuckDuckGo Lite Engine (Siêu nhẹ, 0đ API, chống timeout)
+  const ddgLitePosts = await fetchDuckDuckGoLiteSerp(query, maxPages);
+  if (ddgLitePosts.length > 0) {
+    logger.info(`🦆 [Direct SERP DDG Lite] Tìm thấy ${ddgLitePosts.length} kết quả (0đ API)`);
+    return ddgLitePosts;
+  }
+
+  // Thử 3: DuckDuckGo HTML Scraper Fallback (Multi-page)
   const ddgPosts = await fetchDuckDuckGoSerp(query, maxPages);
   if (ddgPosts.length > 0) {
-    logger.info(`🦆 [Direct SERP DuckDuckGo] Tìm thấy ${ddgPosts.length} kết quả qua ${maxPages} trang (0đ API)`);
+    logger.info(`🦆 [Direct SERP DuckDuckGo HTML] Tìm thấy ${ddgPosts.length} kết quả qua ${maxPages} trang (0đ API)`);
     return ddgPosts;
   }
 
@@ -267,6 +274,75 @@ async function fetchDuckDuckGoSerp(query: string, maxPages = 2): Promise<RawScra
       }
     } catch (err: any) {
       logger.warn(`[DuckDuckGo Direct Page ${page + 1}] Lỗi: ${err.message}`);
+      break;
+    }
+  }
+
+  return posts;
+}
+
+async function fetchDuckDuckGoLiteSerp(query: string, maxPages = 2): Promise<RawScrapedPost[]> {
+  const posts: RawScrapedPost[] = [];
+  const seenUrls = new Set<string>();
+
+  for (let page = 0; page < maxPages; page++) {
+    const randomUA = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+    const url = 'https://lite.duckduckgo.com/lite/';
+    const bodyStr = `q=${encodeURIComponent(query)}&kl=vi-vn${page > 0 ? `&s=${page * 30}` : ''}`;
+
+    try {
+      const res = await httpFetch(url, {
+        method: 'POST',
+        headers: {
+          'User-Agent': randomUA,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Origin': 'https://lite.duckduckgo.com',
+          'Referer': 'https://lite.duckduckgo.com/'
+        },
+        body: bodyStr,
+        timeoutMs: 4000,
+        retries: 0
+      });
+
+      if (!res.ok) break;
+
+      const html = await res.text();
+      let pageNewItems = 0;
+
+      // Extract all redirect URLs (uddg=...) from DuckDuckGo Lite HTML
+      const uddgMatches = html.matchAll(/uddg=(https?%3A%2F%2F[^&"'\s]+|https?:\/\/[^&"'\s]+)/gi);
+      for (const match of uddgMatches) {
+        let cleanUrl = decodeURIComponent(match[1]);
+        cleanUrl = cleanUrl.replace(/["'\s>].*$/, '');
+
+        if (
+          !cleanUrl.includes('duckduckgo.com') &&
+          !seenUrls.has(cleanUrl) &&
+          isSpecificPostUrl(cleanUrl)
+        ) {
+          seenUrls.add(cleanUrl);
+          pageNewItems++;
+
+          // Extract surrounding text or title snippet
+          const snippetMatch = html.match(new RegExp(`href="[^"]*${match[1].replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}[^"]*"[^>]*>(.*?)<\/a>`, 'i'));
+          const titleText = snippetMatch ? cleanHtmlText(snippetMatch[1]) : '';
+
+          posts.push({
+            platform: detectPlatform(cleanUrl),
+            url: cleanUrl,
+            rawContent: `[DuckDuckGo Lite Trang ${page + 1}]\nURL: ${cleanUrl}\nTiêu đề: ${titleText}\nTrích đoạn: Kết quả tìm kiếm từ DuckDuckGo Lite`
+          });
+        }
+      }
+
+      if (pageNewItems === 0) break;
+
+      if (page < maxPages - 1) {
+        await new Promise(r => setTimeout(r, 200 + Math.random() * 200));
+      }
+    } catch (err: any) {
+      logger.warn(`[DuckDuckGo Lite Page ${page + 1}] Lỗi: ${err.message}`);
       break;
     }
   }
