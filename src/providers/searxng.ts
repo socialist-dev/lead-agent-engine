@@ -5,9 +5,12 @@ import { logger } from '../infra/logger';
 import { isSpecificPostUrl } from '../infra/url-verifier';
 
 const SEARXNG_INSTANCES = [
+  'https://searx.priv.at',
   'https://searx.be',
   'https://searx.space',
-  'https://searx.priv.at'
+  'https://searx.tiekoetter.com',
+  'https://searx.work',
+  'https://search.bus-hit.me'
 ];
 
 export async function fetchSearXNG(query: string, maxPages = 1): Promise<RawScrapedPost[]> {
@@ -26,13 +29,15 @@ export async function fetchSearXNG(query: string, maxPages = 1): Promise<RawScra
         const res = await httpFetch(url, {
           headers: {
             'Accept': 'application/json',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
           },
-          timeoutMs: 3500,
+          timeoutMs: 5000,
           retries: 0
         });
 
-        if (!res.ok) break;
+        if (!res.ok) {
+          break;
+        }
 
         const contentType = res.headers.get('content-type') || '';
         if (!contentType.includes('application/json')) break;

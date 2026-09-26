@@ -24,6 +24,14 @@ jobs:
           path: node_modules
           key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
 
+      - name: Cache Processed URLs
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: url-cache-${{ github.run_id }}
+          restore-keys: |
+            url-cache-
+
       - name: Install dependencies
         run: npm install
 

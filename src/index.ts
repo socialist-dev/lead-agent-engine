@@ -4,6 +4,7 @@ import { fetchActiveClientsFromAdmin } from './providers/gsheet';
 import { runClientPipeline } from './pipeline';
 import { mapConcurrent } from './utils';
 import { PipelineResult } from './types';
+import { saveUrlCache } from './infra/url-cache';
 
 async function main() {
   const config = loadConfig();
@@ -48,6 +49,9 @@ async function main() {
 
   logger.info(`🎉 TỔNG CỘNG: Đã đẩy ${totalLeadsPushed}/${totalLeadsFound} leads cho ${activeClients.length} khách hàng.`);
   logger.info('======================================================\n');
+
+  // Lưu persistent cache đĩa cho lần chạy tiếp theo
+  saveUrlCache();
 }
 
 main();

@@ -38,11 +38,12 @@ export async function searchFirecrawl(
     });
 
     if (!res.ok) {
-      if (res.status === 429) {
-        logger.warn(`[Firecrawl] HTTP 429 Rate Limit. Bỏ qua Firecrawl các dork tiếp theo.`);
+      if (res.status === 429 || res.status === 402 || res.status === 401) {
+        const errText = await res.text().catch(() => '');
+        logger.warn(`⚠️ [Firecrawl] HTTP ${res.status}: ${errText.slice(0, 120)}. Khóa API Firecrawl không khả dụng, bỏ qua Firecrawl các dork tiếp theo.`);
         isFirecrawlRateLimited = true;
       } else {
-        const errText = await res.text();
+        const errText = await res.text().catch(() => '');
         logger.warn(`[Firecrawl] HTTP Error ${res.status}: ${errText.slice(0, 100)}`);
       }
       return [];

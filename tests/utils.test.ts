@@ -48,7 +48,7 @@ describe('Utils', () => {
     expect(formattedMoiDang).toMatch(/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/);
 
     const formattedNA = formatPostedTimeToDateTime('N/A');
-    expect(formattedNA).toMatch(/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/);
+    expect(formattedNA).toBe('UNKNOWN_TIME');
 
     const formattedExplicit = formatPostedTimeToDateTime('24/09/2026 14:30');
     expect(formattedExplicit).toBe('24/09/2026 14:30');

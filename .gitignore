@@ -7,3 +7,4 @@ IDEAS_*.md
 RESEARCH_*.md
 walkthrough.md
 .agents/
+.cache/

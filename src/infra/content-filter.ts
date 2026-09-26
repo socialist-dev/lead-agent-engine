@@ -17,7 +17,6 @@ const BLACKLIST_PATTERNS = [
   /\bcờ bạc\b/i,
   /\bgame bài\b/i,
   /\bđụ nhau\b/i,
-  /\bpublic\b/i,
   /\bdân tình nó cản\b/i
 ];
 
@@ -40,22 +39,38 @@ export function isToxicOrNsfw(text: string): boolean {
 
 /**
  * Kiểm tra thời gian đăng bài có hợp lệ hay không (Thời gian thực <= maxDays, mặc định 7 ngày)
- * Chặn tuyệt đối các bài "6 tháng trước", "1 năm trước"
+ * Chặn tuyệt đối các bài "6 tháng trước", "1 năm trước", và UNKNOWN_TIME
  */
 export function isLeadTimeValid(postedAgo: string, maxDays = 7): boolean {
   if (!postedAgo) return true;
   const timeStr = String(postedAgo).trim();
 
-  // 1. Kiểm tra định dạng mốc ngày dd/MM/yyyy
+  // 0. Chặn tuyệt đối UNKNOWN_TIME (bài không xác định được thời gian)
+  if (timeStr === 'UNKNOWN_TIME') {
+    logger.warn(`⏰ [Time Filter] Loại bỏ bài do không xác định được thời gian đăng.`);
+    return false;
+  }
+
+  // 1. Kiểm tra định dạng mốc ngày dd/MM/yyyy (sử dụng VN timezone nhất quán)
   const dateMatch = timeStr.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
   if (dateMatch) {
     const day = parseInt(dateMatch[1], 10);
     const month = parseInt(dateMatch[2], 10) - 1;
     const year = parseInt(dateMatch[3], 10);
     const postDate = new Date(year, month, day);
+
+    // Sử dụng VN timezone nhất quán (khớp với formatPostedTimeToDateTime)
     const now = new Date();
-    const diffMs = now.getTime() - postDate.getTime();
+    const vnNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+    const diffMs = vnNow.getTime() - postDate.getTime();
     const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+    // Chặn bài tương lai (chênh lệch âm > 1 ngày)
+    if (diffDays < -1) {
+      logger.warn(`⏰ [Time Filter] Loại bỏ bài đăng từ tương lai: "${postedAgo}" (${Math.round(diffDays)} ngày)`);
+      return false;
+    }
+
     if (diffDays > maxDays) {
       logger.warn(`⏰ [Time Filter] Loại bỏ bài đăng quá ${maxDays} ngày: "${postedAgo}" (${Math.round(diffDays)} ngày)`);
       return false;

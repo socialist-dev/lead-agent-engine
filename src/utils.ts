@@ -68,39 +68,54 @@ export function cleanStringField(val: any, fallback: string): string {
 export function formatPostedTimeToDateTime(rawTime: string): string {
   const now = new Date();
   const vnTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+  const currentYear = vnTime.getFullYear();
 
   const pad = (n: number) => String(n).padStart(2, '0');
   const formatDate = (d: Date) => {
     return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
 
-  if (!rawTime) return formatDate(vnTime);
+  if (!rawTime) return 'UNKNOWN_TIME';
   const str = String(rawTime).trim().toLowerCase();
+
+  // 0. Chặn trực tiếp các chuỗi chứa năm cũ (2020-2025 hoặc trước) → UNKNOWN_TIME
+  const oldYearMatch = str.match(/\b(20[0-1]\d|202[0-5])\b/);
+  if (oldYearMatch) {
+    return 'UNKNOWN_TIME';
+  }
+
+  // Chặn trực tiếp "tháng trước", "năm trước", "months ago", "years ago", "tuần trước" > 2 tuần
+  if (/tháng\s+trước|month|năm\s+trước|year/i.test(str)) {
+    return 'UNKNOWN_TIME';
+  }
 
   // 1. Mốc ngày tháng năm đã có sẵn (VD: 25/09/2026 14:30 hoặc 25/09/2026)
   const existingDateMatch = str.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
   if (existingDateMatch) {
-    const day = pad(parseInt(existingDateMatch[1], 10));
-    const month = pad(parseInt(existingDateMatch[2], 10));
-    const year = existingDateMatch[3];
+    const day = parseInt(existingDateMatch[1], 10);
+    const month = parseInt(existingDateMatch[2], 10);
+    const year = parseInt(existingDateMatch[3], 10);
+    // Chặn năm cũ hoặc năm tương lai xa
+    if (year < currentYear || year > currentYear + 1) {
+      return 'UNKNOWN_TIME';
+    }
+    // Chặn ngày/tháng không hợp lệ
+    if (month < 1 || month > 12 || day < 1 || day > 31) {
+      return 'UNKNOWN_TIME';
+    }
     const hour = existingDateMatch[4] ? pad(parseInt(existingDateMatch[4], 10)) : pad(vnTime.getHours());
     const min = existingDateMatch[5] ? pad(parseInt(existingDateMatch[5], 10)) : pad(vnTime.getMinutes());
-    return `${day}/${month}/${year} ${hour}:${min}`;
+    return `${pad(day)}/${pad(month)}/${year} ${hour}:${min}`;
   }
 
-  // 2. Các từ tương đối kiểu "vừa xong", "mới đăng", "n/a", "null" -> Quy đổi sang ngày giờ quét hiện tại
+  // 2. Các từ tương đối kiểu "vừa xong", "mới đăng" → Quy đổi sang ngày giờ quét hiện tại
   if (
-    str === '' ||
     str.includes('vừa xong') ||
     str.includes('vừa mới') ||
     str.includes('mới đăng') ||
-    str.includes('mới đây') ||
     str.includes('vừa đăng') ||
     str.includes('mới xong') ||
-    str.includes('just now') ||
-    str.includes('n/a') ||
-    str === 'null' ||
-    str === 'undefined'
+    str.includes('just now')
   ) {
     return formatDate(vnTime);
   }
@@ -109,6 +124,7 @@ export function formatPostedTimeToDateTime(rawTime: string): string {
   const minMatch = str.match(/(\d+)\s*(phút|min)/i);
   if (minMatch) {
     const mins = parseInt(minMatch[1], 10);
+    if (mins > 60 * 24 * 30) return 'UNKNOWN_TIME'; // > 30 ngày tính theo phút
     const target = new Date(vnTime.getTime() - mins * 60 * 1000);
     return formatDate(target);
   }
@@ -117,6 +133,7 @@ export function formatPostedTimeToDateTime(rawTime: string): string {
   const hourMatch = str.match(/(\d+)\s*(giờ|hour|h\b)/i);
   if (hourMatch) {
     const hours = parseInt(hourMatch[1], 10);
+    if (hours > 24 * 30) return 'UNKNOWN_TIME'; // > 30 ngày tính theo giờ
     const target = new Date(vnTime.getTime() - hours * 60 * 60 * 1000);
     return formatDate(target);
   }
@@ -125,12 +142,22 @@ export function formatPostedTimeToDateTime(rawTime: string): string {
   const dayMatch = str.match(/(\d+)\s*(ngày|day|d\b)/i);
   if (dayMatch) {
     const days = parseInt(dayMatch[1], 10);
+    if (days > 365) return 'UNKNOWN_TIME'; // > 1 năm
     const target = new Date(vnTime.getTime() - days * 24 * 60 * 60 * 1000);
     return formatDate(target);
   }
 
-  // Fallback mặc định
-  return formatDate(vnTime);
+  // 6. "X tuần trước" / "X weeks ago"
+  const weekMatch = str.match(/(\d+)\s*(tuần|week)/i);
+  if (weekMatch) {
+    const weeks = parseInt(weekMatch[1], 10);
+    if (weeks > 52) return 'UNKNOWN_TIME';
+    const target = new Date(vnTime.getTime() - weeks * 7 * 24 * 60 * 60 * 1000);
+    return formatDate(target);
+  }
+
+  // STRICT FALLBACK: Không match bất kỳ pattern nào → UNKNOWN_TIME (KHÔNG gán ngày hiện tại)
+  return 'UNKNOWN_TIME';
 }
 
 export async function mapConcurrent<T, R>(

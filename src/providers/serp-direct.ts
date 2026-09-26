@@ -90,33 +90,57 @@ async function fetchGoogleSerp(query: string, timeParam: string, maxPages = 2): 
       const html = await res.text();
       let pageNewItems = 0;
 
-      // Trích xuất link dạng /url?q=
-      const urlQMatches = html.matchAll(/href="\/url\?q=(https?%3A%2F%2F[^&"]+|https?:\/\/[^&"]+)/gi);
-      for (const match of urlQMatches) {
-        const cleanUrl = decodeURIComponent(match[1]);
-        if (isValidSerpUrl(cleanUrl, seenUrls)) {
+      // Phân tách khối kết quả tìm kiếm Google (<div class="g"> hoặc <div class="MjjYud">)
+      const blocks = html.split(/<div\s+class="[^"]*(?:MjjYud|Gx5Zad|g\s|tF2Cxc)[^"]*"/gi);
+
+      if (blocks.length > 1) {
+        for (let i = 1; i < blocks.length; i++) {
+          const block = blocks[i];
+
+          // Tìm URL trong block
+          const urlMatch = block.match(/href="\/url\?q=(https?%3A%2F%2F[^&"]+|https?:\/\/[^&"]+)/i) ||
+                           block.match(/href="(https?:\/\/(?:facebook\.com|threads\.net|voz\.vn|tinhte\.vn|otofun\.net|otosaigon\.com|[^"\/]+)[^"]*)"/i);
+          if (!urlMatch) continue;
+
+          let cleanUrl = urlMatch[1];
+          if (cleanUrl.startsWith('http%3A') || cleanUrl.startsWith('https%3A')) {
+            cleanUrl = decodeURIComponent(cleanUrl);
+          }
+
+          if (!isValidSerpUrl(cleanUrl, seenUrls)) continue;
           seenUrls.add(cleanUrl);
           pageNewItems++;
+
+          // Trích xuất Tiêu đề (<h3>)
+          const titleMatch = block.match(/<h3[^>]*>(.*?)<\/h3>/i);
+          const titleText = titleMatch ? cleanHtmlText(titleMatch[1]) : '';
+
+          // Trích xuất Snippet
+          const snippetMatch = block.match(/<div[^>]*class="[^"]*(?:VwiC3b|yXMwvf|BNeawe|s3rec)[^"]*"[^>]*>(.*?)<\/div>/i);
+          const snippetText = snippetMatch ? cleanHtmlText(snippetMatch[1]) : cleanHtmlText(block.slice(0, 500));
+
           posts.push({
             platform: detectPlatform(cleanUrl),
             url: cleanUrl,
-            rawContent: `[Google Result Trang ${page + 1}]\nURL: ${cleanUrl}\nTrích đoạn nội dung: Kết quả tìm kiếm từ Google`
+            rawContent: `[Google Result Trang ${page + 1}]\nURL: ${cleanUrl}\nTiêu đề: ${titleText}\nTrích đoạn nội dung: ${snippetText}`
           });
         }
       }
 
-      // Trích xuất link direct href="https://..." trong kết quả Google hiện đại
-      const directMatches = html.matchAll(/href="(https?:\/\/(?:facebook\.com|threads\.net|voz\.vn|tinhte\.vn|otofun\.net|otosaigon\.com|[^"\/]+)[^"]*)"/gi);
-      for (const match of directMatches) {
-        const cleanUrl = match[1];
-        if (isValidSerpUrl(cleanUrl, seenUrls)) {
-          seenUrls.add(cleanUrl);
-          pageNewItems++;
-          posts.push({
-            platform: detectPlatform(cleanUrl),
-            url: cleanUrl,
-            rawContent: `[Google Result Trang ${page + 1}]\nURL: ${cleanUrl}\nTrích đoạn nội dung: Kết quả tìm kiếm từ Google`
-          });
+      // Fallback: nếu split block không tìm ra kết quả, dùng regex quét URL truyền thống
+      if (pageNewItems === 0) {
+        const urlQMatches = html.matchAll(/href="\/url\?q=(https?%3A%2F%2F[^&"]+|https?:\/\/[^&"]+)/gi);
+        for (const match of urlQMatches) {
+          const cleanUrl = decodeURIComponent(match[1]);
+          if (isValidSerpUrl(cleanUrl, seenUrls)) {
+            seenUrls.add(cleanUrl);
+            pageNewItems++;
+            posts.push({
+              platform: detectPlatform(cleanUrl),
+              url: cleanUrl,
+              rawContent: `[Google Result Trang ${page + 1}]\nURL: ${cleanUrl}\nTrích đoạn nội dung: Kết quả từ Google Search`
+            });
+          }
         }
       }
 
@@ -178,22 +202,61 @@ async function fetchDuckDuckGoSerp(query: string, maxPages = 2): Promise<RawScra
       const html = await res.text();
       let pageNewItems = 0;
 
-      // Trích xuất tất cả uddg redirect URLs trong HTML DuckDuckGo
-      const uddgMatches = html.matchAll(/uddg=(https?%3A%2F%2F[^&"]+|https?:\/\/[^&"]+)/gi);
-      for (const match of uddgMatches) {
-        const targetUrl = decodeURIComponent(match[1]);
-        if (
-          !targetUrl.includes('duckduckgo.com') &&
-          !seenUrls.has(targetUrl) &&
-          isSpecificPostUrl(targetUrl)
-        ) {
+      // Phân tách các khối kết quả của DuckDuckGo (<div class="result ...">)
+      const blocks = html.split(/<div\s+class="[^"]*result\s+results_links[^"]*"/gi);
+
+      if (blocks.length > 1) {
+        for (let i = 1; i < blocks.length; i++) {
+          const block = blocks[i];
+          const match = block.match(/uddg=(https?%3A%2F%2F[^&"]+|https?:\/\/[^&"]+)/i);
+          if (!match) continue;
+
+          const targetUrl = decodeURIComponent(match[1]);
+          if (
+            targetUrl.includes('duckduckgo.com') ||
+            seenUrls.has(targetUrl) ||
+            !isSpecificPostUrl(targetUrl)
+          ) {
+            continue;
+          }
+
           seenUrls.add(targetUrl);
           pageNewItems++;
+
+          // Trích xuất Tiêu đề DDG
+          const titleMatch = block.match(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*>(.*?)<\/a>/i);
+          const titleText = titleMatch ? cleanHtmlText(titleMatch[1]) : '';
+
+          // Trích xuất Snippet DDG
+          const snippetMatch = block.match(/<(?:a|div)[^>]*class="[^"]*result__snippet[^"]*"[^>]*>(.*?)<\/(?:a|div)>/i);
+          const snippetText = snippetMatch ? cleanHtmlText(snippetMatch[1]) : cleanHtmlText(block.slice(0, 400));
+
           posts.push({
             platform: detectPlatform(targetUrl),
             url: targetUrl,
-            rawContent: `[DuckDuckGo Result Trang ${page + 1}]\nURL: ${targetUrl}\nTrích đoạn: Kết quả tìm kiếm từ DuckDuckGo`
+            rawContent: `[DuckDuckGo Result Trang ${page + 1}]\nURL: ${targetUrl}\nTiêu đề: ${titleText}\nTrích đoạn nội dung: ${snippetText}`
           });
+        }
+      }
+
+      // Fallback cho DDG nếu block split rỗng
+      if (pageNewItems === 0) {
+        const uddgMatches = html.matchAll(/uddg=(https?%3A%2F%2F[^&"]+|https?:\/\/[^&"]+)/gi);
+        for (const match of uddgMatches) {
+          const targetUrl = decodeURIComponent(match[1]);
+          if (
+            !targetUrl.includes('duckduckgo.com') &&
+            !seenUrls.has(targetUrl) &&
+            isSpecificPostUrl(targetUrl)
+          ) {
+            seenUrls.add(targetUrl);
+            pageNewItems++;
+            posts.push({
+              platform: detectPlatform(targetUrl),
+              url: targetUrl,
+              rawContent: `[DuckDuckGo Result Trang ${page + 1}]\nURL: ${targetUrl}\nTrích đoạn nội dung: Kết quả từ DuckDuckGo`
+            });
+          }
         }
       }
 

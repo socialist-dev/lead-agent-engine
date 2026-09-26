@@ -28,11 +28,15 @@ export async function searchJina(
         'X-Retain-Images': 'none',
         'X-With-Generated-Alt': 'false'
       },
-      timeoutMs: 4000,
-      retries: 0
+      timeoutMs: 10000,
+      retries: 1
     });
 
-    if (!res.ok) return [];
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      logger.warn(`[Jina] HTTP ${res.status} cho dork "${query}": ${errText.slice(0, 100)}`);
+      return [];
+    }
 
     const md = await res.text();
     const sections = md.split(/\[\d+\] Title:/g);
