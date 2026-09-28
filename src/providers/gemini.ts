@@ -422,10 +422,10 @@ CHỈ TRẢ VỀ MẢNG JSON CÁC BÀI ĐẠT CHUẨN.
     return validItems;
   } catch (err: any) {
     logger.warn(`⚠️ [Gemini Batch ${chunkNum}/${totalChunks}] Lỗi Gemini AI API (${err.message}). Tự động fallback chuyển ${posts.length} bài thô thành lead dạng raw.`);
+    const timeVal = formatScanTimeVN();
     return posts.map(p => {
       const titleText = cleanStringField(p.rawContent.slice(0, 120), 'Bài viết cào từ SERP');
       const contentText = cleanStringField(p.rawContent.slice(0, 600), 'Nội dung bài viết gốc từ SERP Engine');
-      const timeVal = scanTimeFormatted;
       return {
         scanTime: timeVal,
         scanDate: timeVal,
