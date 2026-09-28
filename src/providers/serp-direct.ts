@@ -188,19 +188,17 @@ async function fetchDuckDuckGoSerp(query: string, maxPages = 2): Promise<RawScra
 
   for (let page = 0; page < maxPages; page++) {
     const randomUA = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-    const url = 'https://html.duckduckgo.com/html/';
-    const bodyStr = `q=${encodeURIComponent(query)}${page > 0 ? `&s=${page * 30}&dc=${page * 30 + 1}` : ''}`;
+    const sParam = page > 0 ? `&s=${page * 30}&dc=${page * 30 + 1}` : '';
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}${sParam}`;
 
     try {
       const res = await httpFetch(url, {
-        method: 'POST',
         headers: {
           'User-Agent': randomUA,
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7'
         },
-        body: bodyStr,
-        timeoutMs: 6000,
+        timeoutMs: 8000,
         retries: 0
       });
 
@@ -287,21 +285,17 @@ async function fetchDuckDuckGoLiteSerp(query: string, maxPages = 2): Promise<Raw
 
   for (let page = 0; page < maxPages; page++) {
     const randomUA = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-    const url = 'https://lite.duckduckgo.com/lite/';
-    const bodyStr = `q=${encodeURIComponent(query)}&kl=vi-vn${page > 0 ? `&s=${page * 30}` : ''}`;
+    const sParam = page > 0 ? `&s=${page * 30}` : '';
+    const url = `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}&kl=vi-vn${sParam}`;
 
     try {
       const res = await httpFetch(url, {
-        method: 'POST',
         headers: {
           'User-Agent': randomUA,
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
-          'Origin': 'https://lite.duckduckgo.com',
-          'Referer': 'https://lite.duckduckgo.com/'
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7'
         },
-        body: bodyStr,
-        timeoutMs: 4000,
+        timeoutMs: 8000,
         retries: 0
       });
 
