@@ -121,12 +121,9 @@ export async function runClientPipeline(
   const uniquePosts = Array.from(uniquePostsMap.values());
   logger.info(`📌 Tổng gom được ${uniquePosts.length} bài viết thô độc nhất cho [${client.name}].`);
 
-  // BỘ LỌC PERSISTENT CACHE: Bỏ qua các URL đã xử lý/thẩm định trong 14 ngày qua
-  const freshPosts = uniquePosts.filter(p => !isUrlSeen(p.url));
-  const cachedCount = uniquePosts.length - freshPosts.length;
-  if (cachedCount > 0) {
-    logger.info(`📦 [URL Cache] Đã bỏ qua ${cachedCount}/${uniquePosts.length} bài viết trùng lặp trong cache (tiết kiệm token & AI quota).`);
-  }
+  // TEMPORARILY DISABLED PER USER REQUEST (Requirements #4 & #5): Bypass cache check to re-evaluate and push all scraped posts
+  const freshPosts = uniquePosts;
+  const cachedCount = 0;
 
   let leadsPushed = 0;
   let leadsFound = 0;
