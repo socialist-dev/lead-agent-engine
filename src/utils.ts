@@ -25,7 +25,7 @@ export function formatScanTimeVN(): string {
 }
 
 export function cleanPhoneNumber(rawContact: string): string {
-  let clean = String(rawContact || '').trim();
+  let clean = String(rawContact || '').replace(/\*/g, '').trim();
   const lower = clean.toLowerCase();
   
   if (
@@ -57,7 +57,8 @@ export function cleanPhoneNumber(rawContact: string): string {
 
 export function cleanStringField(val: any, fallback: string): string {
   if (val === undefined || val === null) return fallback;
-  const str = String(val).trim();
+  // Strip markdown asterisks (*) from content strings
+  const str = String(val).replace(/\*/g, '').trim();
   const lower = str.toLowerCase();
   if (str === '' || lower === 'null' || lower === 'undefined' || lower === 'n/a' || lower === 'none') {
     return fallback;

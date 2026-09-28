@@ -101,19 +101,13 @@ export async function runClientPipeline(
     }
 
     rawPosts.push(...posts);
-    await sleep(250); // Nghỉ 250ms giữa các dork tránh Google rate limit burst
+    await sleep(1000); // Nghỉ 1000ms giữa các dork tránh Google rate limit burst
   }
 
 
-  // Chuẩn hóa URL & Deduplication & Lọc rác thô tục / từ phủ định ngách / link profile rác
-  const cleanRawPosts = rawPosts.filter(
-    p =>
-      isSpecificPostUrl(p.url) &&
-      !isToxicOrNsfw(p.url) &&
-      !isToxicOrNsfw(p.rawContent) &&
-      !containsNegativeKeywords(p.url, client.nicheDefinition) &&
-      !containsNegativeKeywords(p.rawContent, client.nicheDefinition)
-  );
+  // Chuẩn hóa URL & Deduplication & Lọc rác link profile rác
+  // TEMPORARILY DISABLED PER USER REQUEST: Bypassing toxic & negative keyword filters to inspect raw output
+  const cleanRawPosts = rawPosts.filter(p => isSpecificPostUrl(p.url));
 
   // Gom trùng theo normalized URL
   const uniquePostsMap = new Map<string, RawScrapedPost>();
@@ -139,17 +133,17 @@ export async function runClientPipeline(
 
   // Bước 3: AI QUY TRÌNH 2 GIAI ĐOẠN (2-Stage AI Pipeline)
   if (freshPosts.length > 0) {
-    // Stage 1: AI Intent Judge thẩm định ý định mua dương tính (Binary YES/NO)
-    const stage1ApprovedPosts = await evaluateIntentBinary(freshPosts, client, config.geminiKey, config.geminiModel);
+    // TEMPORARILY DISABLED PER USER REQUEST (Requirement #4): Bypass Stage 1 Intent Judge so user can inspect raw output
+    const stage1ApprovedPosts = freshPosts;
 
-    // Stage 2: AI Field Extractor chỉ bóc 10 cột JSON cho những bài vượt qua Stage 1
+    // Stage 2: AI Field Extractor bóc 10 cột JSON cho những bài viết cào được
     if (stage1ApprovedPosts.length > 0) {
       // Smart Content Enricher: Cào bổ sung nội dung với 100% fallback bảo toàn số lượng lead
       const enrichedPosts = await enrichPostsWithDeepContent(stage1ApprovedPosts, config.concurrencyLimit);
 
       const approvedLeads = await batchEvaluateContent(enrichedPosts, client, config.geminiKey, config.geminiModel);
       leadsFound = approvedLeads.length;
-      logger.info(`🎯 AI Stage 2 bóc tách được ${leadsFound}/${stage1ApprovedPosts.length} lead đạt chuẩn cho [${client.name}].`);
+      logger.info(`🎯 AI Stage 2 bóc tách được ${leadsFound}/${stage1ApprovedPosts.length} lead cho [${client.name}].`);
 
       // Ghi nhận các lead thành công vào persistent cache với TTL 30 ngày
       if (approvedLeads.length > 0) {
@@ -163,16 +157,8 @@ export async function runClientPipeline(
         markUrlsSeen(rejectedPosts.map(p => p.url), 'REJECTED');
       }
 
-      // TẦNG 4 VERIFICATION: Kiểm tra Live Status URL trước khi bơm vào Sheet
-      const verifiedLeads = [];
-      for (const lead of approvedLeads) {
-        const isLive = await verifyUrlIsLiveAndClean(lead.url);
-        if (isLive) {
-          verifiedLeads.push(lead);
-        } else {
-          logger.warn(`🚫 [Pipeline Verifier] Bỏ qua lead do link bị gỡ hoặc dính từ thô tục: "${lead.url}"`);
-        }
-      }
+      // TEMPORARILY BYPASSED PER USER REQUEST: Cho phép tất cả lead đi qua mà không drop ở Verification
+      const verifiedLeads = approvedLeads;
 
       // Bước 4: Bơm thẳng vào Sheet riêng của khách
       if (verifiedLeads.length > 0) {

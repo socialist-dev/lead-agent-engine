@@ -58,10 +58,10 @@ function cleanHtmlText(htmlSnippet: string): string {
 let isGoogleRateLimited = false;
 
 export function resetSerpState() {
-  isGoogleRateLimited = false;
+  // Do NOT reset isGoogleRateLimited during process run to prevent repeated 429 blocks
 }
 
-async function fetchGoogleSerp(query: string, timeParam: string, maxPages = 2): Promise<RawScrapedPost[]> {
+async function fetchGoogleSerp(query: string, timeParam: string, maxPages = 1): Promise<RawScrapedPost[]> {
   if (isGoogleRateLimited) {
     return [];
   }
@@ -87,8 +87,10 @@ async function fetchGoogleSerp(query: string, timeParam: string, maxPages = 2): 
       });
 
       if (res.status === 429) {
-        logger.warn(`⚠️ [Google SERP] Rate limit 429. Skipping Google for remaining dorks in this run.`);
-        isGoogleRateLimited = true;
+        if (!isGoogleRateLimited) {
+          logger.warn(`⚠️ [Google SERP] Rate limit HTTP 429 hit. Tự động chuyển toàn bộ dorks sang DuckDuckGo/Bing/SearXNG.`);
+          isGoogleRateLimited = true;
+        }
         break;
       }
 
@@ -154,9 +156,12 @@ async function fetchGoogleSerp(query: string, timeParam: string, maxPages = 2): 
       if (pageNewItems === 0) break;
 
       if (page < maxPages - 1) {
-        await new Promise(r => setTimeout(r, 300 + Math.random() * 300));
+        await new Promise(r => setTimeout(r, 1000 + Math.random() * 500));
       }
     } catch (err: any) {
+      if (err.message && err.message.includes('429')) {
+        isGoogleRateLimited = true;
+      }
       logger.warn(`[Google SERP Direct Page ${page + 1}] Lỗi: ${err.message}`);
       break;
     }

@@ -19,13 +19,18 @@ export async function generateGroupDiscoveryDorks(
 Bạn là chuyên gia Google Dorking Việt Nam.
 Khách hàng cần tìm: "${nicheString}"
 
-Nhiệm vụ: Tạo ra 4 câu Google Dorking chuẩn xác để KHÁM PHÁ DANH SÁCH CÁC HỘI NHÓM FACEBOOK (Facebook Groups) thuộc lĩnh vực và địa phương mục tiêu.
-Yêu cầu bắt buộc:
-- BẮT BUỘC dùng prefix site:facebook.com/groups/
-- Dùng toán tử (intitle:"..." OR inurl:"...") kết hợp với từ khóa địa phương/phân khúc.
-- Mẫu tham khảo:
+Nhiệm vụ: Tạo ra 4 câu Google Dorking chuẩn xác để TÌM KIẾM NHÓM FACEBOOK (Tier 1 Group Discovery) thuộc lĩnh vực và địa phương mục tiêu.
+CẤU TRÚC BẮT BUỘC:
+- Mọi câu dork BẮT BUỘC có prefix: site:facebook.com/groups/
+- Dùng toán tử (intitle:"..." OR inurl:"...") kết hợp từ khóa phân khúc và địa phương (nếu có).
+- CẤU TRÚC CHUẨN MẪU:
   site:facebook.com/groups/ (intitle:"bất động sản" OR inurl:"batdongsan") "đà nẵng"
   site:facebook.com/groups/ (intitle:"nhà đất" OR inurl:"nhadat") "đà nẵng"
+  site:facebook.com/groups/ (intitle:"ô tô" OR inurl:"oto") "hồ chí minh"
+
+LƯU Ý CỰC KỲ QUAN TRỌNG:
+- TUYỆT ĐỐI KHÔNG dùng dấu hoa thị (*), không dùng ký tự định dạng markdown.
+- TUYỆT ĐỐI KHÔNG tự bịa các câu văn suông đằng sau site:facebook.com/groups/. Phải dùng đúng cú pháp toán tử intitle: / inurl:!
 
 Trả về đúng mảng JSON gồm 4 chuỗi dork:
 ["dork 1", "dork 2", "dork 3", "dork 4"]
@@ -47,7 +52,7 @@ Trả về đúng mảng JSON gồm 4 chuỗi dork:
 
     const data = (await res.json()) as any;
     let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    text = text.replace(/```json/g, '').replace(/```/g, '').replace(/\*/g, '').trim();
     const dorks = JSON.parse(text) as string[];
 
     if (Array.isArray(dorks) && dorks.length > 0) return dorks;
@@ -55,11 +60,13 @@ Trả về đúng mảng JSON gồm 4 chuỗi dork:
   } catch (err: any) {
     logger.warn(`[Gemini Group Discovery] Fallback to regex discovery dorks: ${err.message}`);
     const clean = nicheString.replace(/tìm lead|nhu cầu|khách hàng/gi, '').replace(/\|/g, ' ').trim();
-    const firstWord = clean.split(/\s+/)[0] || 'batdongsan';
+    const words = clean.split(/\s+/).filter(w => w.length > 2);
+    const kw1 = words[0] || 'batdongsan';
+    const kw2 = words[1] || 'nhadat';
     return [
-      `site:facebook.com/groups/ (intitle:"${clean}" OR inurl:"${firstWord}")`,
-      `site:facebook.com/groups/ "hội ${clean}"`,
-      `site:facebook.com/groups/ "cộng đồng ${clean}"`
+      `site:facebook.com/groups/ (intitle:"${clean}" OR inurl:"${kw1}")`,
+      `site:facebook.com/groups/ (intitle:"${kw1}" OR inurl:"${kw2}")`,
+      `site:facebook.com/groups/ "hội ${clean}"`
     ];
   }
 }
@@ -73,29 +80,22 @@ export function generateMicroTargetedPostDorks(
   const cleanNiche = nicheString.replace(/tìm lead|nhu cầu|khách hàng/gi, '').replace(/\|/g, ' ').trim();
   const postDorks: string[] = [];
 
-  const intentKeywords = '("cần mua" OR "tìm mua" OR "cần tìm" OR "đang tìm" OR "tài chính" OR "ngân sách")';
+  const intentKeywords = '("cần mua" OR "tìm mua" OR "cần tìm" OR "đang tìm" OR "tài chính")';
 
-  // 1. Dorking bóp thời gian theo từng Group IDs được phát hiện ở Tier 1
+  // 1. Tier 2: Dorking bóp thời gian sau mốc after:YYYY-MM-DD theo từng Facebook Group ID được phát hiện ở Tier 1
   if (groupHandles.length > 0) {
-    const CHUNK_SIZE = 3;
-    for (let i = 0; i < groupHandles.length; i += CHUNK_SIZE) {
-      const chunk = groupHandles.slice(i, i + CHUNK_SIZE);
-      if (chunk.length === 1) {
-        postDorks.push(`site:facebook.com/groups/${chunk[0]}/ ${intentKeywords} after:${afterDate}`);
-      } else {
-        const groupSites = chunk.map(h => `site:facebook.com/groups/${h}/`).join(' OR ');
-        postDorks.push(`(${groupSites}) ${intentKeywords} after:${afterDate}`);
-      }
+    for (const handle of groupHandles) {
+      postDorks.push(`site:facebook.com/groups/${handle}/ ${intentKeywords} after:${afterDate}`);
     }
   }
 
-  // 2. Dorking quét rộng Facebook Groups bổ sung với sau mốc after:
-  postDorks.push(`site:facebook.com/groups/ ${cleanNiche} ${intentKeywords} after:${afterDate}`);
-  postDorks.push(`site:facebook.com/groups/ ${cleanNiche} ("cần tư vấn" OR "xin địa chỉ" OR "báo giá") after:${afterDate}`);
+  // 2. Dorking quét rộng Facebook Groups bổ sung với từ khóa phân khúc ngách và toán tử intent
+  postDorks.push(`site:facebook.com/groups/ "${cleanNiche}" ${intentKeywords} after:${afterDate}`);
+  postDorks.push(`site:facebook.com/groups/ "${cleanNiche}" ("cần tư vấn" OR "xin địa chỉ" OR "báo giá") after:${afterDate}`);
 
   // 3. Dorking quét Threads và Voz bổ sung với sau mốc after:
-  postDorks.push(`site:threads.net ${cleanNiche} ${intentKeywords} after:${afterDate}`);
-  postDorks.push(`site:voz.vn ${cleanNiche} ${intentKeywords} after:${afterDate}`);
+  postDorks.push(`site:threads.net "${cleanNiche}" ${intentKeywords} after:${afterDate}`);
+  postDorks.push(`site:voz.vn "${cleanNiche}" ${intentKeywords} after:${afterDate}`);
 
   return postDorks;
 }
@@ -114,15 +114,15 @@ Khách hàng cần tìm: "${nicheString}"
 
 Nhiệm vụ: Tạo ra đúng 16 câu tìm kiếm Google Dorking tự nhiên và biến thể đa dạng nhất để quét sạch các bài đăng của người có nhu cầu thật.
 Tạo 16 câu chia thành 4 nhóm chiến lược:
-Nhóm 1 (Direct Intent - Nhu cầu trực tiếp): "cần tìm", "cần tư vấn", "muốn mua/đăng ký", "ai biết/xin chỗ"
+Nhóm 1 (Direct Intent - Nhu cầu trực tiếp): "cần tìm", "cần tư vấn", "muốn mua", "xin địa chỉ"
 Nhóm 2 (Platforms - Nền tảng chuyên biệt): site:facebook.com/groups, site:threads.net, site:voz.vn, site:tinhte.vn
 Nhóm 3 (Synonyms & Slang - Từ đồng nghĩa/ngân sách/thủ tục): "ngân sách", "tài chính", "thủ tục", "báo giá", "chi phí"
-Nhóm 4 (Locality & Variations - Địa phương/Phân khúc): "Hà Nội", "TPHCM", "toàn quốc", "chính hãng", "trọn gói", "uy tín"
+Nhóm 4 (Locality & Variations - Địa phương/Phân khúc): "Hà Nội", "TPHCM", "Đà Nẵng", "chính hãng", "uy tín"
 
 Quy tắc BẮT BUỘC:
-- KHÔNG đặt ngoặc kép (") xung quanh các từ khóa thông thường (VD: viết cào tự nhiên: cần tư vấn bảo hiểm Đà Nẵng, TUYỆT ĐỐI KHÔNG viết "cần tư vấn" "bảo hiểm" Đà Nẵng làm SERP bị 0 kết quả).
-- Không dùng ngoặc đơn lồng nhau phức tạp làm hỏng dork.
-- Dùng từ ngữ tìm kiếm tự nhiên người Việt hay gõ trên Facebook, Threads, Voz, Tinhte.
+- TUYỆT ĐỐI KHÔNG DÙNG DẤU HOA THỊ (*) HOẶC ĐỊNH DẠNG MARKDOWN (như **bold**).
+- KHÔNG dán câu tự do ngay sau site:facebook.com/groups/ mà không có ngoặc kép hoặc từ khóa rõ ràng.
+- KHÔNG đặt ngoặc kép (") xung quanh từ khóa nếu làm SERP trả về 0 kết quả.
 
 Trả về đúng mảng JSON gồm 16 chuỗi:
 ["câu 1", "câu 2", ..., "câu 16"]
@@ -144,7 +144,7 @@ Trả về đúng mảng JSON gồm 16 chuỗi:
 
     const data = (await res.json()) as any;
     let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    text = text.replace(/```json/g, '').replace(/```/g, '').replace(/\*/g, '').trim();
     const dorks = JSON.parse(text) as string[];
 
     if (Array.isArray(dorks) && dorks.length > 0) return dorks;
@@ -345,13 +345,13 @@ CHỈ TRẢ VỀ MẢNG JSON CÁC BÀI ĐẠT CHUẨN.
         // Quy đổi mốc thời gian sang định dạng Ngày/Tháng/Năm Giờ:Phút (chính xác tuyệt đối)
         const formattedTime = formatPostedTimeToDateTime(item.postedAgo, client.timeFilter);
 
-        // TẦNG 2: BỘ LỌC THỜI GIAN CỨNG (Chặn bài vượt quá thời hạn hoặc UNKNOWN_TIME)
+        // TEMPORARILY DISABLED PER USER REQUEST (Requirement #4: Tạm thời tắt bộ lọc để kiểm tra raw output)
+        /*
         if (!isLeadTimeValid(formattedTime, maxDaysAllowed)) {
           logger.warn(`🚫 [Gemini Filter] Bỏ qua bài do quá thời hạn hoặc không lấy được ngày đăng thực tế: "${formattedTime}" (${item.url})`);
           continue;
         }
 
-        // TẦNG 1: BỘ LỌC TỪ NGỮ THÔ TỤC / KHIẾM NHÃ / NSFW
         if (
           isToxicOrNsfw(item.title) ||
           isToxicOrNsfw(item.contentOrBrief) ||
@@ -362,7 +362,6 @@ CHỈ TRẢ VỀ MẢNG JSON CÁC BÀI ĐẠT CHUẨN.
           continue;
         }
 
-        // BỘ LỌC TỪ KHÓA PHỦ ĐỊNH NGÁCH (Loại bài nhầm đồng âm như BMW game vs xe BMW)
         if (
           containsNegativeKeywords(item.title, client.nicheDefinition) ||
           containsNegativeKeywords(item.contentOrBrief, client.nicheDefinition) ||
@@ -372,6 +371,7 @@ CHỈ TRẢ VỀ MẢNG JSON CÁC BÀI ĐẠT CHUẨN.
           logger.warn(`🚫 [Gemini Filter] Bỏ qua bài dính từ khóa phủ định ngách: ${item.url}`);
           continue;
         }
+        */
 
         const cleanContact = cleanPhoneNumber(item.extraField2);
         const scanTimeVal = scanTimeFormatted;
