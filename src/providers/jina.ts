@@ -4,11 +4,16 @@ import { httpFetch } from '../infra/http-client';
 import { logger } from '../infra/logger';
 import { isSpecificPostUrl } from '../infra/url-verifier';
 
+export interface JinaSearchResult {
+  posts: RawScrapedPost[];
+  creditsUsed: number;
+}
+
 export async function searchJina(
   query: string,
   apiKey: string,
   timeFilter = 'qdr:d'
-): Promise<RawScrapedPost[]> {
+): Promise<JinaSearchResult> {
   const safeTime = String(timeFilter || 'qdr:d');
   let validTimeParam = 'qdr:d';
   if (safeTime.includes('qdr:w')) {
@@ -17,8 +22,10 @@ export async function searchJina(
 
   const url = `https://s.jina.ai/${encodeURIComponent(query)}?tbs=${validTimeParam}`;
   const posts: RawScrapedPost[] = [];
+  let creditsUsed = 0;
 
   try {
+    creditsUsed = 1; // 1 credit per HTTP request to s.jina.ai
     const res = await httpFetch(url, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -35,7 +42,7 @@ export async function searchJina(
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
       logger.warn(`[Jina] HTTP ${res.status} cho dork "${query}": ${errText.slice(0, 100)}`);
-      return [];
+      return { posts: [], creditsUsed };
     }
 
     const md = await res.text();
@@ -60,5 +67,5 @@ export async function searchJina(
     logger.warn(`[Jina] Bỏ qua dork "${query}": ${err.message}`);
   }
 
-  return posts;
+  return { posts, creditsUsed };
 }

@@ -10,15 +10,22 @@ export function resetFirecrawlState(): void {
   isFirecrawlRateLimited = false;
 }
 
+export interface FirecrawlSearchResult {
+  posts: RawScrapedPost[];
+  creditsUsed: number;
+}
+
 export async function searchFirecrawl(
   query: string,
   apiKey: string,
   _timeFilter = 'qdr:d'
-): Promise<RawScrapedPost[]> {
-  if (!apiKey || isFirecrawlRateLimited) return [];
+): Promise<FirecrawlSearchResult> {
+  if (!apiKey || isFirecrawlRateLimited) return { posts: [], creditsUsed: 0 };
   const posts: RawScrapedPost[] = [];
+  let creditsUsed = 0;
 
   try {
+    creditsUsed = 1; // Standard Firecrawl API search query = 1 credit
     const res = await httpFetch('https://api.firecrawl.dev/v1/search', {
       method: 'POST',
       headers: {
@@ -46,10 +53,13 @@ export async function searchFirecrawl(
         const errText = await res.text().catch(() => '');
         logger.warn(`[Firecrawl] HTTP Error ${res.status}: ${errText.slice(0, 100)}`);
       }
-      return [];
+      return { posts: [], creditsUsed };
     }
 
     const json = (await res.json()) as any;
+    if (json && typeof json.creditsUsed === 'number') {
+      creditsUsed = json.creditsUsed;
+    }
     const results = json.data || json.results || [];
 
     for (const item of results) {
@@ -66,7 +76,7 @@ export async function searchFirecrawl(
     logger.warn(`[Firecrawl] Bỏ qua dork "${query}": ${err.message}`);
   }
 
-  return posts;
+  return { posts, creditsUsed };
 }
 
 

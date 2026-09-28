@@ -34,6 +34,8 @@ async function main() {
   
   let totalLeadsFound = 0;
   let totalLeadsPushed = 0;
+  let totalJinaCredits = 0;
+  let totalFirecrawlCredits = 0;
 
   results.forEach((res, i) => {
     const clientName = activeClients[i].name;
@@ -41,8 +43,10 @@ async function main() {
       const val = res.value as PipelineResult;
       totalLeadsFound += val.leadsFound;
       totalLeadsPushed += val.leadsPushed;
+      totalJinaCredits += val.jinaCreditsUsed || 0;
+      totalFirecrawlCredits += val.firecrawlCreditsUsed || 0;
       logger.info(
-        `- [${clientName}]: Gom ${val.rawPostsFound} bài thô (${val.cachedSkipped} trùng cache, ${val.freshEvaluated} bài mới AI duyệt) -> Đã đẩy ${val.leadsPushed}/${val.leadsFound} leads (${(val.durationMs / 1000).toFixed(1)}s)`
+        `- [${clientName}]: Gom ${val.rawPostsFound} bài thô (${val.cachedSkipped} trùng cache, ${val.freshEvaluated} bài mới AI duyệt) -> Đã đẩy ${val.leadsPushed}/${val.leadsFound} leads | API Credits: Jina: ${val.jinaCreditsUsed || 0}, Firecrawl: ${val.firecrawlCreditsUsed || 0} (${(val.durationMs / 1000).toFixed(1)}s)`
       );
     } else {
       logger.error(`- [${clientName}]: LỖI - ${res.reason?.message || res.reason}`);
@@ -50,6 +54,7 @@ async function main() {
   });
 
   logger.info(`🎉 TỔNG CỘNG: Đã đẩy ${totalLeadsPushed}/${totalLeadsFound} leads cho ${activeClients.length} khách hàng.`);
+  logger.info(`💳 TỔNG SỬ DỤNG API CREDITS: Jina Reader API: ${totalJinaCredits} credits | Firecrawl API: ${totalFirecrawlCredits} credits.`);
   logger.info('======================================================\n');
 
   // Lưu persistent cache đĩa cho lần chạy tiếp theo

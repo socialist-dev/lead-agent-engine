@@ -42,6 +42,8 @@ export async function runClientPipeline(
 
   // Bước 2: Cào dữ liệu siêu quy mô với Đa Động Cơ Waterfall (Google -> DDG -> Bing -> SearXNG)
   const rawPosts: RawScrapedPost[] = [];
+  let jinaCreditsUsed = 0;
+  let firecrawlCreditsUsed = 0;
 
   for (let i = 0; i < activeDorks.length; i++) {
     const dork = activeDorks[i];
@@ -67,14 +69,16 @@ export async function runClientPipeline(
 
     // Tầng 2 Fallback: Jina API Fallback (nếu 4 động cơ 0đ trên không ra bài)
     if (posts.length === 0 && config.jinaKey) {
-      const jinaPosts = await searchJina(dork, config.jinaKey, client.timeFilter);
-      posts.push(...jinaPosts);
+      const jinaResult = await searchJina(dork, config.jinaKey, client.timeFilter);
+      posts.push(...jinaResult.posts);
+      jinaCreditsUsed += jinaResult.creditsUsed;
     }
 
     // Tầng 3 Fallback: Firecrawl API Fallback
     if (posts.length === 0 && config.firecrawlKey) {
-      const firecrawlPosts = await searchFirecrawl(dork, config.firecrawlKey, client.timeFilter);
-      posts.push(...firecrawlPosts);
+      const firecrawlResult = await searchFirecrawl(dork, config.firecrawlKey, client.timeFilter);
+      posts.push(...firecrawlResult.posts);
+      firecrawlCreditsUsed += firecrawlResult.creditsUsed;
     }
 
     rawPosts.push(...posts);
@@ -164,6 +168,8 @@ export async function runClientPipeline(
     freshEvaluated: freshPosts.length,
     leadsFound,
     leadsPushed,
+    jinaCreditsUsed,
+    firecrawlCreditsUsed,
     durationMs,
     errors
   };

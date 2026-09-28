@@ -49,6 +49,8 @@ export interface PipelineResult {
   freshEvaluated: number;
   leadsFound: number;
   leadsPushed: number;
+  jinaCreditsUsed: number;
+  firecrawlCreditsUsed: number;
   durationMs: number;
   errors: string[];
 }
