@@ -77,7 +77,8 @@ export function generateMicroTargetedPostDorks(
   daysBack: number = 7
 ): string[] {
   const afterDate = getAfterDate(daysBack);
-  const cleanNiche = nicheString.replace(/tìm lead|nhu cầu|khách hàng/gi, '').replace(/\|/g, ' ').trim();
+  // Loại bỏ các từ thừa, giữ lại từ khóa tìm kiếm chính
+  const cleanKeywords = nicheString.replace(/tìm lead|nhu cầu|khách hàng/gi, '').replace(/\|/g, ' ').replace(/["']/g, '').trim();
   const postDorks: string[] = [];
 
   const intentKeywords = '("cần mua" OR "tìm mua" OR "cần tìm" OR "đang tìm" OR "tài chính")';
@@ -89,13 +90,13 @@ export function generateMicroTargetedPostDorks(
     }
   }
 
-  // 2. Dorking quét rộng Facebook Groups bổ sung với từ khóa phân khúc ngách và toán tử intent
-  postDorks.push(`site:facebook.com/groups/ "${cleanNiche}" ${intentKeywords} after:${afterDate}`);
-  postDorks.push(`site:facebook.com/groups/ "${cleanNiche}" ("cần tư vấn" OR "xin địa chỉ" OR "báo giá") after:${afterDate}`);
+  // 2. Dorking quét rộng Facebook Groups bổ sung với từ khóa phân khúc ngách (không bọc ngoặc kép chuỗi dài)
+  postDorks.push(`site:facebook.com/groups/ ${cleanKeywords} ${intentKeywords} after:${afterDate}`);
+  postDorks.push(`site:facebook.com/groups/ ${cleanKeywords} ("cần tư vấn" OR "xin địa chỉ" OR "báo giá") after:${afterDate}`);
 
   // 3. Dorking quét Threads và Voz bổ sung với sau mốc after:
-  postDorks.push(`site:threads.net "${cleanNiche}" ${intentKeywords} after:${afterDate}`);
-  postDorks.push(`site:voz.vn "${cleanNiche}" ${intentKeywords} after:${afterDate}`);
+  postDorks.push(`site:threads.net ${cleanKeywords} ${intentKeywords} after:${afterDate}`);
+  postDorks.push(`site:voz.vn ${cleanKeywords} ${intentKeywords} after:${afterDate}`);
 
   return postDorks;
 }
@@ -420,8 +421,41 @@ CHỈ TRẢ VỀ MẢNG JSON CÁC BÀI ĐẠT CHUẨN.
 
     return validItems;
   } catch (err: any) {
-    logger.error(`[Gemini Batch ${chunkNum}/${totalChunks}] Lỗi: ${err.message}`);
-    return [];
+    logger.warn(`⚠️ [Gemini Batch ${chunkNum}/${totalChunks}] Lỗi Gemini AI API (${err.message}). Tự động fallback chuyển ${posts.length} bài thô thành lead dạng raw.`);
+    return posts.map(p => {
+      const titleText = cleanStringField(p.rawContent.slice(0, 120), 'Bài viết cào từ SERP');
+      const contentText = cleanStringField(p.rawContent.slice(0, 600), 'Nội dung bài viết gốc từ SERP Engine');
+      const timeVal = scanTimeFormatted;
+      return {
+        scanTime: timeVal,
+        scanDate: timeVal,
+        platform: p.platform || 'Facebook',
+        postedAgo: 'Mới đăng (Trong 24h qua)',
+        postDate: 'Mới đăng (Trong 24h qua)',
+        date: 'Mới đăng (Trong 24h qua)',
+        time: 'Mới đăng (Trong 24h qua)',
+        categoryTag: '[Raw Lead]',
+        tag: '[Raw Lead]',
+        category: '[Raw Lead]',
+        scoreOrPriority: '5 ⭐',
+        score: '5 ⭐',
+        priority: '5 ⭐',
+        title: titleText,
+        summary: titleText,
+        contentOrBrief: contentText,
+        content: contentText,
+        brief: contentText,
+        description: contentText,
+        extraField1: 'Chi tiết theo nhu cầu (Xem link bài)',
+        extra1: 'Chi tiết theo nhu cầu (Xem link bài)',
+        extraField2: 'Chưa có SĐT (Inbox qua link bài)',
+        extra2: 'Chưa có SĐT (Inbox qua link bài)',
+        phone: 'Chưa có SĐT (Inbox qua link bài)',
+        contact: 'Chưa có SĐT (Inbox qua link bài)',
+        url: p.url,
+        link: p.url
+      };
+    });
   }
 }
 

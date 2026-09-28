@@ -10,8 +10,8 @@ export interface HttpRequestOptions extends RequestInit {
 export async function httpFetch(url: string, options: HttpRequestOptions = {}): Promise<Response> {
   const {
     timeoutMs = 15000,
-    retries = 2,
-    retryDelayMs = 1000,
+    retries = 3,
+    retryDelayMs = 2000,
     ...fetchOptions
   } = options;
 
@@ -35,7 +35,7 @@ export async function httpFetch(url: string, options: HttpRequestOptions = {}): 
     } catch (err: any) {
       lastError = err;
       if (attempt < retries) {
-        const delay = retryDelayMs * Math.pow(2, attempt);
+        const delay = retryDelayMs * Math.pow(2, attempt) + Math.floor(Math.random() * 500);
         logger.warn(`Fetch error (${url.slice(0, 60)}...): ${err.message}. Retrying in ${delay}ms (Attempt ${attempt + 1}/${retries})...`);
         await sleep(delay);
       }
