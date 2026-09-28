@@ -77,6 +77,9 @@ export async function exportToClientSheet(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         spreadsheetId: cleanSheetId,
+        startRow: 3,
+        targetRow: 3,
+        start_row: 3,
         jobs: items
       }),
       timeoutMs: 45000,

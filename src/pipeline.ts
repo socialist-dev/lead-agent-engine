@@ -1,5 +1,5 @@
 import { ActiveClientFromAdmin, AppConfig, PipelineResult, RawScrapedPost } from './types';
-import { generateDorksFromNiche, batchEvaluateContent } from './providers/gemini';
+import { generateDorksFromNiche, generateGroupDiscoveryDorks, generateMicroTargetedPostDorks, batchEvaluateContent } from './providers/gemini';
 import { evaluateIntentBinary } from './providers/ai-intent-judge';
 import { searchSerpDirect, resetSerpState } from './providers/serp-direct';
 import { fetchBingSerp } from './providers/bing-direct';
@@ -7,7 +7,7 @@ import { fetchSearXNG } from './providers/searxng';
 import { searchJina } from './providers/jina';
 import { searchFirecrawl, resetFirecrawlState } from './providers/firecrawl';
 import { exportToClientSheet } from './providers/gsheet';
-import { sleep, mapConcurrent } from './utils';
+import { sleep, mapConcurrent, extractFacebookGroupHandles, getAfterDate } from './utils';
 import { logger } from './infra/logger';
 import { isToxicOrNsfw } from './infra/content-filter';
 import { verifyUrlIsLiveAndClean, isSpecificPostUrl } from './infra/url-verifier';
@@ -33,14 +33,33 @@ export async function runClientPipeline(
   logger.info(`📍 SPREADSHEET ID: [${client.spreadsheetId}]`);
   logger.info(`======================================================`);
 
-  // Bước 1: AI tự động sinh 16 câu Dorking chia theo 4 nhóm chiến lược
+  // BƯỚC 1: QUY TRÌNH DORKING 2 GIAI ĐOẠN (2-TIER PRECISION DORKING FOR FB GROUPS)
+  const daysBack = client.timeFilter === 'qdr:d' ? 1 : 7;
+  const afterDate = getAfterDate(daysBack);
+
+  // Tier 1: Group Discovery Phase - Khám phá danh sách Facebook Group ngách qua inurl: & intitle:
+  logger.info(`🌐 [Tier 1 Group Discovery] Đang quét khám phá danh sách Facebook Groups ngách cho [${client.name}]...`);
+  const groupDiscoveryDorks = await generateGroupDiscoveryDorks(client.nicheDefinition, config.geminiKey, config.geminiModel);
+  
+  const groupDiscoveryPosts: RawScrapedPost[] = [];
+  for (const discDork of groupDiscoveryDorks.slice(0, 3)) {
+    const foundGroupPosts = await searchSerpDirect(discDork, client.timeFilter, 1);
+    groupDiscoveryPosts.push(...foundGroupPosts);
+  }
+
+  const discoveredGroupHandles = extractFacebookGroupHandles(groupDiscoveryPosts.map(p => p.url));
+  logger.info(`🌐 [Tier 1 Group Discovery] Đã phát hiện ${discoveredGroupHandles.length} Facebook Group IDs phù hợp: ${JSON.stringify(discoveredGroupHandles)}`);
+
+  // Tier 2: Micro-Targeted Post Dorking Phase - Quét bài đăng theo từng Group ID bóp mốc thời gian after:YYYY-MM-DD
+  const targetedPostDorks = generateMicroTargetedPostDorks(client.nicheDefinition, discoveredGroupHandles, daysBack);
+  logger.info(`🎯 [Tier 2 Targeted Dorks] Sinh ${targetedPostDorks.length} câu Dorking bóp thời gian (after:${afterDate}): ${JSON.stringify(targetedPostDorks)}`);
+
+  // Bổ sung thêm dynamic dorks nếu chưa đủ 12 dorks
   const dynamicDorks = await generateDorksFromNiche(client.nicheDefinition, config.geminiKey, config.geminiModel);
-  logger.info(`🤖 AI sinh ${dynamicDorks.length} câu Dorking đa dạng cho [${client.name}]: ${JSON.stringify(dynamicDorks)}`);
+  const combinedDorks = Array.from(new Set([...targetedPostDorks, ...dynamicDorks]));
+  const activeDorks = combinedDorks.slice(0, 12);
 
-  // Bỏ bớt dork thừa nếu có, lấy 12 dorks chiến lược nhất để quét siêu nhanh
-  const activeDorks = dynamicDorks.slice(0, 12);
-
-  // Bước 2: Cào dữ liệu siêu quy mô với Đa Động Cơ Waterfall (Google -> DDG -> Bing -> SearXNG)
+  // BƯỚC 2: CÀO DỮ LIỆU SIÊU QUY MÔ VỚI ĐA ĐỘNG CƠ WATERFALL (Google -> DDG -> Bing -> SearXNG)
   const rawPosts: RawScrapedPost[] = [];
   let jinaCreditsUsed = 0;
   let firecrawlCreditsUsed = 0;
@@ -85,6 +104,7 @@ export async function runClientPipeline(
     await sleep(250); // Nghỉ 250ms giữa các dork tránh Google rate limit burst
   }
 
+
   // Chuẩn hóa URL & Deduplication & Lọc rác thô tục / từ phủ định ngách / link profile rác
   const cleanRawPosts = rawPosts.filter(
     p =>
@@ -119,9 +139,6 @@ export async function runClientPipeline(
 
   // Bước 3: AI QUY TRÌNH 2 GIAI ĐOẠN (2-Stage AI Pipeline)
   if (freshPosts.length > 0) {
-    // Đánh dấu mặc định tất cả các bài cào mới vào Soft-Cache (TTL 3 ngày nếu không thành lead)
-    markUrlsSeen(freshPosts.map(p => p.url), 'REJECTED');
-
     // Stage 1: AI Intent Judge thẩm định ý định mua dương tính (Binary YES/NO)
     const stage1ApprovedPosts = await evaluateIntentBinary(freshPosts, client, config.geminiKey, config.geminiModel);
 
@@ -135,7 +152,16 @@ export async function runClientPipeline(
       logger.info(`🎯 AI Stage 2 bóc tách được ${leadsFound}/${stage1ApprovedPosts.length} lead đạt chuẩn cho [${client.name}].`);
 
       // Ghi nhận các lead thành công vào persistent cache với TTL 30 ngày
-      markUrlsSeen(approvedLeads.map(p => p.url), 'APPROVED');
+      if (approvedLeads.length > 0) {
+        markUrlsSeen(approvedLeads.map(p => p.url), 'APPROVED');
+      }
+
+      // Đánh dấu các bài không đạt chuẩn thành REJECTED (TTL 3 ngày)
+      const approvedUrlsSet = new Set(approvedLeads.map(l => normalizeUrl(l.url)));
+      const rejectedPosts = freshPosts.filter(p => !approvedUrlsSet.has(normalizeUrl(p.url)));
+      if (rejectedPosts.length > 0) {
+        markUrlsSeen(rejectedPosts.map(p => p.url), 'REJECTED');
+      }
 
       // TẦNG 4 VERIFICATION: Kiểm tra Live Status URL trước khi bơm vào Sheet
       const verifiedLeads = [];

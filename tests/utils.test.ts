@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectPlatform, cleanPhoneNumber, cleanStringField, mapConcurrent, formatPostedTimeToDateTime } from '../src/utils';
+import { detectPlatform, cleanPhoneNumber, cleanStringField, mapConcurrent, formatPostedTimeToDateTime, getAfterDate, extractFacebookGroupHandles } from '../src/utils';
 import { isSpecificPostUrl } from '../src/infra/url-verifier';
 
 describe('Utils', () => {
@@ -73,7 +73,32 @@ describe('Utils', () => {
     expect(results).toHaveLength(5);
     expect(results.map(r => r.status === 'fulfilled' ? r.value : null)).toEqual([2, 4, 6, 8, 10]);
   });
+
+  it('generates getAfterDate in YYYY-MM-DD format accurately', () => {
+    const after7Days = getAfterDate(7);
+    expect(after7Days).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+    const after1Day = getAfterDate(1);
+    expect(after1Day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('extracts unique Facebook group handles accurately from URLs', () => {
+    const rawUrls = [
+      'https://www.facebook.com/groups/136253933684351/',
+      'https://www.facebook.com/groups/136253933684351/posts/98765',
+      'https://facebook.com/groups/batdongsandanang',
+      'https://facebook.com/groups/search',
+      'https://www.facebook.com/groups/batdongsandanang/'
+    ];
+
+    const handles = extractFacebookGroupHandles(rawUrls);
+    expect(handles).toContain('136253933684351');
+    expect(handles).toContain('batdongsandanang');
+    expect(handles).not.toContain('search');
+    expect(handles).toHaveLength(2);
+  });
 });
+
 
 
 

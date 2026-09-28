@@ -39,16 +39,30 @@ export function isToxicOrNsfw(text: string): boolean {
 
 /**
  * Kiểm tra thời gian đăng bài có hợp lệ hay không (Thời gian thực <= maxDays, mặc định 7 ngày)
- * Chặn tuyệt đối các bài "6 tháng trước", "1 năm trước", và UNKNOWN_TIME
+ * Chặn tuyệt đối các bài "6 tháng trước", "1 năm trước", và UNKNOWN_TIME (không lấy được mốc đăng)
  */
-export function isLeadTimeValid(postedAgo: string, maxDays = 14): boolean {
-  if (!postedAgo) return true;
+export function isLeadTimeValid(postedAgo: string, maxDays = 7): boolean {
+  if (!postedAgo) {
+    logger.warn(`⚠️ [Time Filter] Không có mốc thời gian đăng bài. Bỏ qua bài.`);
+    return false;
+  }
   const timeStr = String(postedAgo).trim();
 
-  // 0. Cho phép bài UNKNOWN_TIME đi qua (bài từ SERP không chứa mốc date trong snippet)
-  if (timeStr === 'UNKNOWN_TIME') {
-    logger.info(`⏰ [Time Filter] Cho phép bài UNKNOWN_TIME đi qua (SERP snippet không có date).`);
+  // 0a. Bài được Google Dorking time-boundary xác nhận đăng gần đây
+  if (timeStr.includes('Mới đăng') || timeStr.includes('Gần đây')) {
     return true;
+  }
+
+  // 0b. Chặn dứt điểm UNKNOWN_TIME, N/A, null, undefined - Nếu không lấy được mốc ngày đăng bài thực tế, CẢNH BÁO và BỎ QUA
+  if (
+    timeStr === 'UNKNOWN_TIME' ||
+    timeStr === 'N/A' ||
+    timeStr === 'null' ||
+    timeStr === 'undefined' ||
+    timeStr === ''
+  ) {
+    logger.warn(`⚠️ [Time Filter] CẢNH BÁO: Không lấy được thời gian đăng thực tế của URL bài đăng (UNKNOWN_TIME). Bỏ qua bài.`);
+    return false;
   }
 
   // 1. Kiểm tra định dạng mốc ngày dd/MM/yyyy (sử dụng VN timezone nhất quán)
@@ -96,4 +110,5 @@ export function isLeadTimeValid(postedAgo: string, maxDays = 14): boolean {
 
   return true;
 }
+
 

@@ -1,11 +1,104 @@
 import { ExtractedItem, ActiveClientFromAdmin, RawScrapedPost } from '../types';
 import { getTimeFilterRule } from '../config';
-import { formatScanTimeVN, cleanPhoneNumber, cleanStringField, formatPostedTimeToDateTime } from '../utils';
+import { formatScanTimeVN, cleanPhoneNumber, cleanStringField, formatPostedTimeToDateTime, getAfterDate } from '../utils';
 import { httpFetch } from '../infra/http-client';
 import { geminiRateLimiter } from '../infra/rate-limiter';
 import { logger } from '../infra/logger';
 import { isToxicOrNsfw, isLeadTimeValid } from '../infra/content-filter';
 import { containsNegativeKeywords } from '../infra/niche-negative-keywords';
+
+export async function generateGroupDiscoveryDorks(
+  nicheString: string,
+  geminiKey: string,
+  model = 'gemini-3.1-flash-lite'
+): Promise<string[]> {
+  await geminiRateLimiter.acquire();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+
+  const prompt = `
+Bạn là chuyên gia Google Dorking Việt Nam.
+Khách hàng cần tìm: "${nicheString}"
+
+Nhiệm vụ: Tạo ra 4 câu Google Dorking chuẩn xác để KHÁM PHÁ DANH SÁCH CÁC HỘI NHÓM FACEBOOK (Facebook Groups) thuộc lĩnh vực và địa phương mục tiêu.
+Yêu cầu bắt buộc:
+- BẮT BUỘC dùng prefix site:facebook.com/groups/
+- Dùng toán tử (intitle:"..." OR inurl:"...") kết hợp với từ khóa địa phương/phân khúc.
+- Mẫu tham khảo:
+  site:facebook.com/groups/ (intitle:"bất động sản" OR inurl:"batdongsan") "đà nẵng"
+  site:facebook.com/groups/ (intitle:"nhà đất" OR inurl:"nhadat") "đà nẵng"
+
+Trả về đúng mảng JSON gồm 4 chuỗi dork:
+["dork 1", "dork 2", "dork 3", "dork 4"]
+`;
+
+  try {
+    const res = await httpFetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: 'application/json' }
+      }),
+      timeoutMs: 15000,
+      retries: 2
+    });
+
+    if (!res.ok) throw new Error(`Gemini HTTP ${res.status}`);
+
+    const data = (await res.json()) as any;
+    let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    const dorks = JSON.parse(text) as string[];
+
+    if (Array.isArray(dorks) && dorks.length > 0) return dorks;
+    throw new Error('Invalid array response from Gemini');
+  } catch (err: any) {
+    logger.warn(`[Gemini Group Discovery] Fallback to regex discovery dorks: ${err.message}`);
+    const clean = nicheString.replace(/tìm lead|nhu cầu|khách hàng/gi, '').replace(/\|/g, ' ').trim();
+    const firstWord = clean.split(/\s+/)[0] || 'batdongsan';
+    return [
+      `site:facebook.com/groups/ (intitle:"${clean}" OR inurl:"${firstWord}")`,
+      `site:facebook.com/groups/ "hội ${clean}"`,
+      `site:facebook.com/groups/ "cộng đồng ${clean}"`
+    ];
+  }
+}
+
+export function generateMicroTargetedPostDorks(
+  nicheString: string,
+  groupHandles: string[],
+  daysBack: number = 7
+): string[] {
+  const afterDate = getAfterDate(daysBack);
+  const cleanNiche = nicheString.replace(/tìm lead|nhu cầu|khách hàng/gi, '').replace(/\|/g, ' ').trim();
+  const postDorks: string[] = [];
+
+  const intentKeywords = '("cần mua" OR "tìm mua" OR "cần tìm" OR "đang tìm" OR "tài chính" OR "ngân sách")';
+
+  // 1. Dorking bóp thời gian theo từng Group IDs được phát hiện ở Tier 1
+  if (groupHandles.length > 0) {
+    const CHUNK_SIZE = 3;
+    for (let i = 0; i < groupHandles.length; i += CHUNK_SIZE) {
+      const chunk = groupHandles.slice(i, i + CHUNK_SIZE);
+      if (chunk.length === 1) {
+        postDorks.push(`site:facebook.com/groups/${chunk[0]}/ ${intentKeywords} after:${afterDate}`);
+      } else {
+        const groupSites = chunk.map(h => `site:facebook.com/groups/${h}/`).join(' OR ');
+        postDorks.push(`(${groupSites}) ${intentKeywords} after:${afterDate}`);
+      }
+    }
+  }
+
+  // 2. Dorking quét rộng Facebook Groups bổ sung với sau mốc after:
+  postDorks.push(`site:facebook.com/groups/ ${cleanNiche} ${intentKeywords} after:${afterDate}`);
+  postDorks.push(`site:facebook.com/groups/ ${cleanNiche} ("cần tư vấn" OR "xin địa chỉ" OR "báo giá") after:${afterDate}`);
+
+  // 3. Dorking quét Threads và Voz bổ sung với sau mốc after:
+  postDorks.push(`site:threads.net ${cleanNiche} ${intentKeywords} after:${afterDate}`);
+  postDorks.push(`site:voz.vn ${cleanNiche} ${intentKeywords} after:${afterDate}`);
+
+  return postDorks;
+}
 
 export async function generateDorksFromNiche(
   nicheString: string,
@@ -79,6 +172,7 @@ Trả về đúng mảng JSON gồm 16 chuỗi:
     ];
   }
 }
+
 
 export async function batchEvaluateContent(
   posts: RawScrapedPost[],
@@ -244,14 +338,16 @@ CHỈ TRẢ VỀ MẢNG JSON CÁC BÀI ĐẠT CHUẨN.
     const validItems: ExtractedItem[] = [];
     const scanTimeFormatted = formatScanTimeVN();
 
+    const maxDaysAllowed = client.timeFilter === 'qdr:d' ? 1 : 7;
+
     for (const item of approvedItems) {
       if (item && item.url) {
         // Quy đổi mốc thời gian sang định dạng Ngày/Tháng/Năm Giờ:Phút (chính xác tuyệt đối)
-        const formattedTime = formatPostedTimeToDateTime(item.postedAgo);
+        const formattedTime = formatPostedTimeToDateTime(item.postedAgo, client.timeFilter);
 
-        // TẦNG 2: BỘ LỌC THỜI GIAN CỨNG (Chặn bài quá 7 ngày hoặc chứa tháng/năm cũ)
-        if (!isLeadTimeValid(formattedTime, 7)) {
-          logger.warn(`🚫 [Gemini Filter] Bỏ qua bài do quá thời hạn: "${formattedTime}" (${item.url})`);
+        // TẦNG 2: BỘ LỌC THỜI GIAN CỨNG (Chặn bài vượt quá thời hạn hoặc UNKNOWN_TIME)
+        if (!isLeadTimeValid(formattedTime, maxDaysAllowed)) {
+          logger.warn(`🚫 [Gemini Filter] Bỏ qua bài do quá thời hạn hoặc không lấy được ngày đăng thực tế: "${formattedTime}" (${item.url})`);
           continue;
         }
 
@@ -291,10 +387,12 @@ CHỈ TRẢ VỀ MẢNG JSON CÁC BÀI ĐẠT CHUẨN.
 
         validItems.push({
           scanTime: scanTimeVal,
-          date: scanTimeVal,
+          scanDate: scanTimeVal,
           platform: platformVal,
           postedAgo: postedAgoVal,
-          time: postedAgoVal,
+          postDate: postedAgoVal,
+          date: postedAgoVal,  // CHÍNH XÁC: Thời gian đăng bài thực tế của người dùng
+          time: postedAgoVal,  // CHÍNH XÁC: Thời gian đăng bài thực tế của người dùng
           categoryTag: tagVal,
           tag: tagVal,
           category: tagVal,

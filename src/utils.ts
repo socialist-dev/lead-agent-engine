@@ -65,7 +65,7 @@ export function cleanStringField(val: any, fallback: string): string {
   return str;
 }
 
-export function formatPostedTimeToDateTime(rawTime: string): string {
+export function formatPostedTimeToDateTime(rawTime: string, timeFilter?: string): string {
   const now = new Date();
   const vnTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
   const currentYear = vnTime.getFullYear();
@@ -75,8 +75,14 @@ export function formatPostedTimeToDateTime(rawTime: string): string {
     return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
 
-  if (!rawTime) return 'UNKNOWN_TIME';
-  const str = String(rawTime).trim().toLowerCase();
+  const str = String(rawTime || '').trim().toLowerCase();
+  if (!rawTime || str === '' || str === 'n/a' || str === 'null' || str === 'undefined' || str === 'unknown_time') {
+    if (timeFilter) {
+      if (timeFilter === 'qdr:d') return 'Mới đăng (Trong 24h qua)';
+      return 'Mới đăng (Trong 7 ngày qua)';
+    }
+    return 'UNKNOWN_TIME';
+  }
 
   // 0. Chặn trực tiếp các chuỗi chứa năm cũ (2020-2025 hoặc trước) → UNKNOWN_TIME
   const oldYearMatch = str.match(/\b(20[0-1]\d|202[0-5])\b/);
@@ -156,7 +162,12 @@ export function formatPostedTimeToDateTime(rawTime: string): string {
     return formatDate(target);
   }
 
-  // STRICT FALLBACK: Không match bất kỳ pattern nào → UNKNOWN_TIME (KHÔNG gán ngày hiện tại)
+  // FALLBACK DORKING SERP: Đã qua toán tử time-boundary after:
+  if (timeFilter) {
+    if (timeFilter === 'qdr:d') return 'Mới đăng (Trong 24h qua)';
+    return 'Mới đăng (Trong 7 ngày qua)';
+  }
+
   return 'UNKNOWN_TIME';
 }
 
@@ -184,5 +195,36 @@ export async function mapConcurrent<T, R>(
   await Promise.all(workers);
   return results;
 }
+
+export function getAfterDate(daysBack: number = 7): string {
+  const now = new Date();
+  const vnTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+  vnTime.setDate(vnTime.getDate() - daysBack);
+  const y = vnTime.getFullYear();
+  const m = String(vnTime.getMonth() + 1).padStart(2, '0');
+  const d = String(vnTime.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+export function extractFacebookGroupHandles(urls: string[]): string[] {
+  const handles = new Set<string>();
+  const invalidPaths = new Set([
+    'create', 'search', 'jobs', 'permalink', 'media', 'events', 'posts', 'about', 'members', 'user', 'profile.php'
+  ]);
+
+  for (const rawUrl of urls) {
+    if (!rawUrl || typeof rawUrl !== 'string') continue;
+    const match = rawUrl.match(/facebook\.com\/groups\/([a-zA-Z0-9.\-_]+)/i);
+    if (match && match[1]) {
+      const handle = match[1].trim().toLowerCase();
+      if (handle && !invalidPaths.has(handle) && !handle.startsWith('posts')) {
+        handles.add(handle);
+      }
+    }
+  }
+
+  return Array.from(handles);
+}
+
 
 
