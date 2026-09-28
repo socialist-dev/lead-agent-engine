@@ -41,14 +41,14 @@ export function isToxicOrNsfw(text: string): boolean {
  * Kiểm tra thời gian đăng bài có hợp lệ hay không (Thời gian thực <= maxDays, mặc định 7 ngày)
  * Chặn tuyệt đối các bài "6 tháng trước", "1 năm trước", và UNKNOWN_TIME
  */
-export function isLeadTimeValid(postedAgo: string, maxDays = 7): boolean {
+export function isLeadTimeValid(postedAgo: string, maxDays = 14): boolean {
   if (!postedAgo) return true;
   const timeStr = String(postedAgo).trim();
 
-  // 0. Chặn tuyệt đối UNKNOWN_TIME (bài không xác định được thời gian)
+  // 0. Cho phép bài UNKNOWN_TIME đi qua (bài từ SERP không chứa mốc date trong snippet)
   if (timeStr === 'UNKNOWN_TIME') {
-    logger.warn(`⏰ [Time Filter] Loại bỏ bài do không xác định được thời gian đăng.`);
-    return false;
+    logger.info(`⏰ [Time Filter] Cho phép bài UNKNOWN_TIME đi qua (SERP snippet không có date).`);
+    return true;
   }
 
   // 1. Kiểm tra định dạng mốc ngày dd/MM/yyyy (sử dụng VN timezone nhất quán)

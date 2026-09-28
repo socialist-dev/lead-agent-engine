@@ -304,29 +304,60 @@ async function fetchDuckDuckGoLiteSerp(query: string, maxPages = 2): Promise<Raw
       const html = await res.text();
       let pageNewItems = 0;
 
-      // Extract all redirect URLs (uddg=...) from DuckDuckGo Lite HTML
-      const uddgMatches = html.matchAll(/uddg=(https?%3A%2F%2F[^&"'\s]+|https?:\/\/[^&"'\s]+)/gi);
-      for (const match of uddgMatches) {
-        let cleanUrl = decodeURIComponent(match[1]);
-        cleanUrl = cleanUrl.replace(/["'\s>].*$/, '');
+      // Extract DDG Lite HTML rows with result links & snippets
+      const rows = html.split(/<tr[^>]*>/gi);
+      let currentTitle = '';
+      let currentUrl = '';
 
-        if (
-          !cleanUrl.includes('duckduckgo.com') &&
-          !seenUrls.has(cleanUrl) &&
-          isSpecificPostUrl(cleanUrl)
-        ) {
-          seenUrls.add(cleanUrl);
-          pageNewItems++;
+      for (let r = 0; r < rows.length; r++) {
+        const row = rows[r];
+        const uddgMatch = row.match(/uddg=(https?%3A%2F%2F[^&"'\s]+|https?:\/\/[^&"'\s]+)/i);
+        if (uddgMatch) {
+          let cleanUrl = decodeURIComponent(uddgMatch[1]).replace(/["'\s>].*$/, '');
+          const titleMatch = row.match(/<a[^>]*class="result-link"[^>]*>(.*?)<\/a>/i) || row.match(/<a[^>]*>(.*?)<\/a>/i);
+          currentTitle = titleMatch ? cleanHtmlText(titleMatch[1]) : '';
+          currentUrl = cleanUrl;
+        }
 
-          // Extract surrounding text or title snippet
-          const snippetMatch = html.match(new RegExp(`href="[^"]*${match[1].replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}[^"]*"[^>]*>(.*?)<\/a>`, 'i'));
-          const titleText = snippetMatch ? cleanHtmlText(snippetMatch[1]) : '';
+        const snippetMatch = row.match(/<td[^>]*class="result-snippet"[^>]*>(.*?)<\/td>/i);
+        if (snippetMatch && currentUrl) {
+          const snippetText = cleanHtmlText(snippetMatch[1]);
+          if (
+            !currentUrl.includes('duckduckgo.com') &&
+            !seenUrls.has(currentUrl) &&
+            isSpecificPostUrl(currentUrl)
+          ) {
+            seenUrls.add(currentUrl);
+            pageNewItems++;
+            posts.push({
+              platform: detectPlatform(currentUrl),
+              url: currentUrl,
+              rawContent: `[DuckDuckGo Lite Trang ${page + 1}]\nURL: ${currentUrl}\nTiêu đề: ${currentTitle}\nTrích đoạn: ${snippetText}`
+            });
+          }
+          currentUrl = '';
+          currentTitle = '';
+        }
+      }
 
-          posts.push({
-            platform: detectPlatform(cleanUrl),
-            url: cleanUrl,
-            rawContent: `[DuckDuckGo Lite Trang ${page + 1}]\nURL: ${cleanUrl}\nTiêu đề: ${titleText}\nTrích đoạn: Kết quả tìm kiếm từ DuckDuckGo Lite`
-          });
+      // Fallback if row parsing found no items
+      if (pageNewItems === 0) {
+        const uddgMatches = html.matchAll(/uddg=(https?%3A%2F%2F[^&"'\s]+|https?:\/\/[^&"'\s]+)/gi);
+        for (const match of uddgMatches) {
+          let cleanUrl = decodeURIComponent(match[1]).replace(/["'\s>].*$/, '');
+          if (
+            !cleanUrl.includes('duckduckgo.com') &&
+            !seenUrls.has(cleanUrl) &&
+            isSpecificPostUrl(cleanUrl)
+          ) {
+            seenUrls.add(cleanUrl);
+            pageNewItems++;
+            posts.push({
+              platform: detectPlatform(cleanUrl),
+              url: cleanUrl,
+              rawContent: `[DuckDuckGo Lite Trang ${page + 1}]\nURL: ${cleanUrl}\nTrích đoạn: Kết quả từ DuckDuckGo Lite`
+            });
+          }
         }
       }
 

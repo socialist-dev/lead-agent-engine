@@ -22,6 +22,22 @@ function cleanHtmlText(html: string): string {
   return clean;
 }
 
+const LOGIN_WALL_PATTERNS = [
+  /đăng nhập\s+facebook/i,
+  /log\s*in\s+to\s+facebook/i,
+  /tạo\s+tài\s+khoản\s+facebook/i,
+  /see\s+more\s+on\s+facebook/i,
+  /xem\s+thêm\s+trên\s+facebook/i,
+  /log\s*in\s+or\s+sign\s+up/i,
+  /bạn\s+phải\s+đăng\s+nhập/i
+];
+
+function isLoginWall(text: string): boolean {
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  return LOGIN_WALL_PATTERNS.some(p => p.test(lower));
+}
+
 export async function enrichPostsWithDeepContent(
   posts: RawScrapedPost[],
   concurrency = 4
@@ -53,6 +69,11 @@ export async function enrichPostsWithDeepContent(
 
       const html = await res.text();
       const text = cleanHtmlText(html);
+
+      // Bỏ qua nếu dính login wall
+      if (isLoginWall(text)) {
+        return post;
+      }
 
       if (text.length > 150) {
         // Cắt lấy tối đa 1200 ký tự quan trọng nhất của trang
